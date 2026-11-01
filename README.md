@@ -14,7 +14,7 @@ An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gamin
 - **DPI** — 1 to 6 levels, any value per level (limits and step follow the sensor, e.g. PAW3311: 200–24000 in steps of 100), a colour per level from the standard palette or any custom colour, start level.
 - **Lighting** — all 11 modes supported by the firmware.
 - **Performance** — polling rate (the list follows what the current connection supports), lift-off distance (LOD 1/2 mm — the vendor Windows app lacks it), sleep timer, wake on movement, lighting off while moving, angle snapping, Motion Sync, ripple control.
-- **Macros** — recorder (keys and mouse buttons, real or fixed delays) and a manual editor (press / release / delay / cursor move, reorder, edit delays), three run modes like the vendor app, memory usage meter, warning about keys left pressed. Encoding matches the vendor driver exactly.
+- **Macros** — recorder (keys and mouse buttons, real or fixed delays) and a manual editor (press / release / delay, type a whole text, reorder, edit delays), three run modes like the vendor app, memory usage meter, warning about keys left pressed. Encoding matches the vendor driver exactly. (Cursor moves inside macros are not performed by the stock firmware, so the editor disables them.)
 - **Profiles** — unlimited, stored on the PC; only the current one is written to the mouse, and **only the settings that differ** (to spare the mouse flash memory).
 - **Per-game profiles** (opt-in) — a profile is applied when an `.exe` starts and reverted when it exits, with an optional on-screen popup per program. Off by default, enabled only after a warning about flash wear.
 - **On-screen popups** for DPI and profile changes with a fully customisable look (position, size, colours, font, timing).
@@ -102,7 +102,7 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md) — status report, all commands, button
 - **DPI:** 1–6 уровней с любыми значениями, цвет каждого уровня из стандартной палитры или любой свой, стартовый уровень.
 - **Подсветка:** все 11 режимов прошивки.
 - **Производительность:** частота опроса, высота отрыва LOD (её нет в фирменной программе), сон, пробуждение движением, angle snapping, Motion Sync, Ripple.
-- **Макросы:** запись и ручной редактор, три режима повтора, индикатор памяти. Кодирование совпадает с официальным драйвером.
+- **Макросы:** запись и ручной редактор, ввод целого текста, три режима повтора, индикатор памяти. Кодирование совпадает с официальным драйвером. Сдвиг курсора в макросах заводская прошивка не выполняет, поэтому он отключён.
 - **Профили:** без ограничения количества, хранятся на компьютере. В мышь пишется только то, что отличается.
 - **Переключение по играм:** профиль включается при запуске exe и возвращается при выходе. По умолчанию выключено и включается только после предупреждения об износе флеш-памяти.
 - **Всплывающие окна** DPI и профиля с настройкой внешнего вида.

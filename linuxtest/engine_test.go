@@ -318,3 +318,26 @@ func TestAPI(t *testing.T) {
 		t.Fatalf("restore content %d %d %d", st2.state.FlashWrites, len(st2.data.Profiles), len(e2.bat.Samples))
 	}
 }
+
+func TestDebounce(t *testing.T) {
+	st, e := setup(t)
+	def := st.data.Settings.DefaultProfile
+	e.handleReport(report(true, 1, 1, 9))
+	e.Apply(def, false, "t", false, true)
+	takeSent()
+	st.data.Settings.DebounceSet, st.data.Settings.Debounce = true, 5
+	e.Apply(def, false, "t", false, true)
+	s := takeSent()
+	if len(s) != 1 || s[0][0] != 9 || s[0][4] != 5 || s[0][2] != 1 {
+		t.Fatalf("debounce packet % X", s)
+	}
+	e.Apply(def, false, "t", false, true)
+	if len(takeSent()) != 0 {
+		t.Fatal("debounce resent")
+	}
+	st.data.Settings.DebounceSet = false
+	e.Apply(def, false, "t", false, true)
+	if len(takeSent()) != 0 {
+		t.Fatal("sent while not managed")
+	}
+}
