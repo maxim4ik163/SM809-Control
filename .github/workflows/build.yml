@@ -1,10 +1,15 @@
 name: build
 
+# Every push to main and every pull request builds the exe as a workflow
+# artifact. Publishing a GitHub release with the tag vX.Y.Z (equal to
+# appVersion in main.go) attaches SM809Control_vX.Y.Z.exe to that release.
 on:
   push:
     branches: [main]
-    tags: ['v*']
   pull_request:
+  release:
+    types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -17,6 +22,19 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.24'
+      - name: Version
+        id: ver
+        run: |
+          V=$(sed -n 's/^const appVersion = "\(.*\)"/\1/p' main.go)
+          if [ -z "$V" ]; then echo "appVersion not found in main.go"; exit 1; fi
+          if [ "${{ github.event_name }}" = "release" ]; then
+            TAG="${{ github.event.release.tag_name }}"
+            if [ "${TAG#v}" != "$V" ]; then
+              echo "Release tag $TAG does not match appVersion $V in main.go"; exit 1
+            fi
+          fi
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+          echo "exe=SM809Control_v$V.exe" >> "$GITHUB_OUTPUT"
       - name: Protocol tests
         run: go test .
       - name: Logic tests
@@ -24,14 +42,14 @@ jobs:
       - name: Build Windows exe
         run: |
           GOOS=windows GOARCH=amd64 go vet .
-          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o SM809Control.exe .
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o "${{ steps.ver.outputs.exe }}" .
       - uses: actions/upload-artifact@v4
         with:
-          name: SM809Control
-          path: SM809Control.exe
-      - name: Release
-        if: startsWith(github.ref, 'refs/tags/v')
+          name: SM809Control_v${{ steps.ver.outputs.version }}
+          path: ${{ steps.ver.outputs.exe }}
+      - name: Attach to release
+        if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
-          files: SM809Control.exe
-          generate_release_notes: true
+          tag_name: ${{ github.event.release.tag_name }}
+          files: ${{ steps.ver.outputs.exe }}
