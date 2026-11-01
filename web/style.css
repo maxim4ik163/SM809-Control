@@ -238,3 +238,11 @@ tr.off td { opacity: .5; }
 .warnbox { max-width: 600px; font-size: 13.5px; }
 .warnbox p { margin: 0 0 10px; }
 .disabledgrp { display: inline-flex; gap: 8px; align-items: center; opacity: .55; }
+
+/* soft buttons */
+.hot.held, .bitem.held { background: #3ddc8455; border-color: var(--accent); }
+.hot.fw { border-style: dashed; border-color: #ffffff30; }
+.hot.dim { cursor: default; background: #12131699; }
+.bitem.fw .l { color: var(--muted); font-style: italic; }
+button.chip { cursor: pointer; padding: 5px 12px; }
+button.chip.on { background: #1f2a22; color: var(--text); }

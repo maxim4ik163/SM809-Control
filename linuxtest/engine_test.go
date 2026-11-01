@@ -341,3 +341,111 @@ func TestDebounce(t *testing.T) {
 		t.Fatal("sent while not managed")
 	}
 }
+
+// Software bindings: turning the mode on writes only the keys command (the
+// carrier layout), editing bindings writes nothing, turning it off writes the
+// normal layout back.
+func TestSoftBindings(t *testing.T) {
+	st, e := setup(t)
+	a, err := newAPI(e, st, func(f func()) { f() })
+	if err != nil {
+		t.Fatal(err)
+	}
+	var carrierSeen [][softSlots]bool
+	onCarrierChange = func(m [softSlots]bool) { carrierSeen = append(carrierSeen, m) }
+	defer func() { onCarrierChange = nil }()
+	def := st.data.Settings.DefaultProfile
+	e.handleReport(report(true, 1, 1, 9))
+	e.Apply(def, false, "t", false, true)
+	takeSent()
+	if st.state.Carrier != ([softSlots]bool{}) {
+		t.Fatal("carrier before soft mode")
+	}
+
+	// a pending profile change (lighting) must not be written by the mode switch
+	st.profile(def).Lighting = 3
+	if c, m := post(t, a, "soft/enable", map[string]bool{"on": true}); c != 200 || m["ok"] != true {
+		t.Fatalf("enable: %d %v", c, m)
+	}
+	s := takeSent()
+	if cmds(s) != "1,1" {
+		t.Fatalf("enable sent %s", cmds(s))
+	}
+	if s[0][4+21] != 112 || s[0][4+23] != 104 { // button 1 (8th entry of the first packet) = F13
+		t.Fatalf("carrier packet % X", s[0])
+	}
+	want := carriedMask(st.profile(def))
+	if st.state.Carrier != want || len(carrierSeen) == 0 || carrierSeen[len(carrierSeen)-1] != want {
+		t.Fatalf("carrier state %v", st.state.Carrier)
+	}
+
+	// bindings change: no write
+	sd := defaultSoftData()
+	sd.Global["b4"] = SoftBinding{Kind: SoftKeys, Keys: "Ctrl+Win+Right"}
+	sd.Profiles = append(sd.Profiles, &SoftProfile{Name: "Game", Exes: []string{"game.exe"}, Enabled: true,
+		Bindings: map[string]SoftBinding{"b5": {Kind: SoftMouse, Button: "middle"}}})
+	if c, m := post(t, a, "soft/save", map[string]any{"soft": sd}); c != 200 {
+		t.Fatalf("soft/save %v", m)
+	}
+	if c, _ := post(t, a, "soft/save", map[string]any{"soft": map[string]any{"global": map[string]any{"b1": map[string]string{"kind": "keys", "keys": "Nope"}}}}); c != 400 {
+		t.Fatal("invalid binding accepted")
+	}
+	if d := e.diff(st.profile(def)); len(d) != 1 || d[0] != "light" {
+		t.Fatalf("pending after enable: %v", d)
+	}
+	st.profile(def).Lighting = 9
+	e.Apply(def, false, "t", false, true)
+	if len(takeSent()) != 0 || st.data.Soft.Global["b4"].Keys != "Ctrl+Win+Right" {
+		t.Fatal("binding change wrote the mouse")
+	}
+	// forward → back on button 4 of the mouse profile: carried → carried, no write
+	p := *st.profile(def)
+	p.Buttons[3] = ButtonAssign{Kind: "mouse", Code: [3]int{16, 8, 0}}
+	if c, m := post(t, a, "profile/save", p); c != 200 {
+		t.Fatal(m)
+	}
+	if len(e.diff(st.profile(def))) != 0 {
+		t.Fatal("pending changes after a carried → carried edit")
+	}
+	// the settings form must not switch the mode off
+	set := st.data.Settings
+	set.SoftBindings = false
+	if c, _ := post(t, a, "settings", map[string]any{"settings": set}); c != 200 || !st.data.Settings.SoftBindings {
+		t.Fatal("settings save changed soft mode")
+	}
+	// state view reports the carrier
+	c, m := post(t, a, "state", nil)
+	if c != 200 || m["soft"].(map[string]any)["enabled"] != true {
+		t.Fatalf("state: %v", m["soft"])
+	}
+
+	// exit with "restore": normal layout written, state follows
+	if err := e.ApplyPlain(def, 2*time.Second); err != nil {
+		t.Fatal(err)
+	}
+	if s := takeSent(); cmds(s) != "1,1" || st.state.Carrier != ([softSlots]bool{}) {
+		t.Fatalf("plain apply sent %s, carrier %v", cmds(s), st.state.Carrier)
+	}
+	// next start in soft mode: carrier again
+	e.Apply(def, false, "start", false, true)
+	if cmds(takeSent()) != "1,1" || st.state.Carrier != want {
+		t.Fatal("carrier not rewritten")
+	}
+
+	if c, m := post(t, a, "soft/enable", map[string]bool{"on": false}); c != 200 || m["ok"] != true {
+		t.Fatalf("disable: %v", m)
+	}
+	if cmds(takeSent()) != "1,1" || st.state.Carrier != ([softSlots]bool{}) || st.data.Settings.SoftBindings {
+		t.Fatal("disable")
+	}
+	// mouse offline: the setting is kept, the write waits for the mouse
+	e.handleReport(report(false, 1, 1, 9))
+	if c, m := post(t, a, "soft/enable", map[string]bool{"on": true}); c != 200 || m["ok"] != false || !st.data.Settings.SoftBindings {
+		t.Fatalf("offline enable: %v", m)
+	}
+	e.handleReport(report(true, 1, 1, 9))
+	waitIdle(e)
+	if cmds(takeSent()) != "1,1" || st.state.Carrier != want {
+		t.Fatal("pending carrier write")
+	}
+}

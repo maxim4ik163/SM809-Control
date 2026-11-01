@@ -134,6 +134,8 @@ async function reload() {
   if (mEditId && !macroById(mEditId) && mEditId !== 'new') { mEditId = null; mDraft = null; mDirty = false; }
   if (!rulesDirty) rulesDraft = clone(S.data.rules || []);
   if (!setDirty) { setDraft = clone(S.data.settings); autostartDraft = S.autostart; }
+  if (!softDirty) softDraft = clone(S.data.soft);
+  if (!softKeys) softKeys = await api('soft/keys').catch(() => []);
   renderAll();
 }
 
@@ -147,6 +149,7 @@ function startEvents() {
     renderEditbar();
     if (lastCurrent !== null && lastCurrent !== S.state.current && tab === 'profiles' && !rulesDirty) renderView();
     if (tab === 'battery') batteryLive();
+    if (tab === 'soft') softLive();
     lastCurrent = S.state.current;
   };
 }
@@ -238,6 +241,7 @@ const PROFILE_TABS = ['buttons', 'dpi', 'light', 'perf'];
 function renderEditbar() {
   const bar = $('#editbar');
   if (tab === 'settings') return settingsBar(bar);
+  if (tab === 'soft') return softBar(bar);
   if (!PROFILE_TABS.includes(tab)) { bar.style.display = 'none'; bar.dataset.h = ''; return; }
   bar.style.display = '';
   const s = st();
@@ -360,7 +364,7 @@ function touch() { dirty = true; renderEditbar(); }
 // tabs
 
 const TABS = [
-  ['buttons', 'Кнопки', 'Buttons'], ['dpi', 'DPI', 'DPI'], ['light', 'Подсветка', 'Lighting'],
+  ['buttons', 'Кнопки', 'Buttons'], ['soft', 'Программные кнопки', 'Soft buttons'], ['dpi', 'DPI', 'DPI'], ['light', 'Подсветка', 'Lighting'],
   ['perf', 'Производительность', 'Performance'], ['macros', 'Макросы', 'Macros'],
   ['profiles', 'Профили и игры', 'Profiles & games'], ['battery', 'Батарея', 'Battery'], ['settings', 'Настройки', 'Settings'],
 ];
@@ -381,7 +385,7 @@ function renderAll() {
 
 function renderView() {
   const v = $('#view');
-  const fn = { buttons: viewButtons, dpi: viewDPI, light: viewLight, perf: viewPerf, macros: viewMacros, profiles: viewProfiles, battery: viewBattery, settings: viewSettings }[tab] || viewButtons;
+  const fn = { buttons: viewButtons, soft: viewSoft, dpi: viewDPI, light: viewLight, perf: viewPerf, macros: viewMacros, profiles: viewProfiles, battery: viewBattery, settings: viewSettings }[tab] || viewButtons;
   v.innerHTML = '';
   fn(v);
 }
@@ -436,7 +440,9 @@ function viewButtons(v) {
   v.innerHTML = `<div class="btnlayout">
     <div><div class="mouse"><img src="mouse.png" alt="">${hs}</div>
       <p class="muted small">${L('Нажмите на номер на картинке или в списке, чтобы назначить функцию.<br>Кнопка 12 — основная левая, она заблокирована, чтобы мышью всегда можно было кликнуть.',
-        'Click a number on the picture or in the list to assign a function.<br>Button 12 is the main left button; it is locked so the mouse can always click.')}</p></div>
+        'Click a number on the picture or in the list to assign a function.<br>Button 12 is the main left button; it is locked so the mouse can always click.')}</p>
+      ${S.data.settings.softBindings ? `<p class="small" style="color:var(--warn)">${L('Программные кнопки включены: для кнопок 1–11 здесь задаётся действие по умолчанию. Смена одной клавиши или кнопки мыши на другую в мышь не пишется; переназначения по программам — на вкладке «Программные кнопки».',
+        'Soft buttons are on: for buttons 1–11 this sets the default action. Changing one key or mouse button to another is not written to the mouse; per-program remapping is on the Soft buttons tab.')}</p>` : ''}</div>
     <div><div class="card"><div class="blist">${list}</div></div><div class="card" id="bed"></div></div></div>`;
   v.querySelectorAll('[data-b]').forEach(el => el.onclick = () => {
     selBtn = +el.dataset.b; btnCat = catOf(draft.buttons[selBtn]); renderView();
@@ -1292,3 +1298,278 @@ setInterval(() => { if (S) showLastMessage(); }, 700);
     document.body.innerHTML = `<div style="padding:40px"><h2>${L('Не удалось подключиться к SM809 Control', 'Cannot connect to SM809 Control')}</h2><p class="muted">${esc(e.message)}</p><p class="muted">${L('Откройте окно заново из значка в трее.', 'Reopen the window from the tray icon.')}</p></div>`;
   }
 })();
+
+// ---------------------------------------------------------------------------
+// Software bindings: buttons 1..11 send F13..F23, the app turns them into
+// actions that depend on the program in the foreground. Bindings are saved
+// without writing the mouse.
+
+const SOFT_N = 11;
+let softDraft = null, softDirty = false, softScope = store.get('softScope', 'global'), softSel = 0, softKeys = null, softSig = '';
+const softSlot = i => 'b' + (i + 1);
+const SOFT_MOUSE = () => [['left', L('Левая кнопка', 'Left click')], ['right', L('Правая кнопка', 'Right click')],
+  ['middle', L('Средняя кнопка', 'Middle click')], ['back', L('Назад', 'Back')], ['forward', L('Вперёд', 'Forward')]];
+const softMouseName = b => (SOFT_MOUSE().find(x => x[0] === b) || [b, b])[1];
+const softProfile = id => softDraft.profiles.find(p => p.id === id);
+const softStat = () => st().soft || { carrier: [], carriable: [], held: [] };
+function softTouch() { softDirty = true; renderEditbar(); }
+
+function softDefaultText(i) {
+  const p = profileById(softStat().onMouse);
+  return p ? assignLabel(p.buttons[i]) : '?';
+}
+function softBindingText(b, i) {
+  switch (b.kind) {
+    case 'keys': return b.keys;
+    case 'mouse': return softMouseName(b.button);
+    case 'disable': return L('ничего', 'nothing');
+  }
+  return softDefaultText(i);
+}
+// What button i does in the given scope: forced global → profile → global → mouse profile.
+function softEffective(i, prof) {
+  const g = softDraft.global[softSlot(i)];
+  if (g && g.kind && g.force) return { b: g, src: 'force' };
+  if (prof) { const pb = prof.bindings[softSlot(i)]; if (pb && pb.kind) return { b: pb, src: 'profile' }; }
+  if (g && g.kind) return { b: g, src: 'global' };
+  return { b: { kind: 'default' }, src: 'default' };
+}
+const SOFT_SRC = () => ({ force: L('общая, главнее профилей', 'global, wins over profiles'), profile: L('профиль программы', 'program profile'),
+  global: L('общая', 'global'), default: L('как в профиле мыши', 'as in the mouse profile') });
+
+function softBar(bar) {
+  bar.style.display = '';
+  const h = `<span class="muted">${L('Программные кнопки', 'Soft buttons')}</span><span class="grow"></span>`
+    + (softDirty ? `<span class="dirty">● ${L('есть несохранённые изменения', 'unsaved changes')}</span>`
+      : `<span class="pend">${L('Привязки сохраняются без записи в мышь', 'Bindings are saved without writing the mouse')}</span>`)
+    + `<button id="sbrev" ${softDirty ? '' : 'disabled'}>${L('Отменить', 'Revert')}</button><button class="primary" id="sbsave" ${softDirty ? '' : 'disabled'}>${L('Сохранить', 'Save')}</button>`;
+  if (bar.dataset.h === h) return;
+  bar.dataset.h = h;
+  bar.innerHTML = h;
+  $('#sbrev').onclick = () => { softDraft = clone(S.data.soft); softDirty = false; renderEditbar(); renderView(); };
+  $('#sbsave').onclick = softSave;
+}
+
+async function softSave() {
+  const r = await run(() => api('soft/save', { soft: softDraft }), L('Привязки сохранены', 'Bindings saved'));
+  if (!r) return false;
+  softDirty = false;
+  await reload();
+  return true;
+}
+
+function softEnable(on) {
+  const text = on
+    ? L(`<p>Кнопки 1–11 будут один раз записаны в мышь как клавиши F13–F23 (одна запись флеш-памяти). Дальше их действия задаёт программа: свои для каждой программы, переключаются мгновенно и без записи в мышь.</p>
+        <p>Кнопки с действием самой мыши (макрос, огонь, DPI, подсветка) и любая кнопка с левым кликом не меняются. Кнопки 12–16 тоже.</p>
+        <p><b>Пока SM809 Control не запущен, кнопки 1–11 ничего не делают.</b> В настройках ниже можно включить возврат обычной раскладки при выходе (одна запись при каждом выходе).</p>`,
+      `<p>Buttons 1–11 will be written to the mouse once as the keys F13–F23 (one flash write). From then on the app decides what they do: different actions per program, switched instantly and without writing the mouse.</p>
+        <p>Buttons with an action of the mouse itself (macro, rapid fire, DPI, lighting) and any button with the left click stay as they are. Buttons 12–16 too.</p>
+        <p><b>While SM809 Control is not running, buttons 1–11 do nothing.</b> Below you can turn on restoring the normal layout on exit (one write on every exit).</p>`)
+    : L('<p>Кнопкам 1–11 вернутся действия профиля мыши (одна запись флеш-памяти). Привязки сохранятся — их можно включить снова.</p>',
+      '<p>Buttons 1–11 get the actions of the mouse profile back (one flash write). Your bindings are kept and can be turned on again.</p>');
+  modal(`<h2>${on ? L('Включить программные кнопки', 'Turn on soft buttons') : L('Выключить программные кнопки', 'Turn off soft buttons')}</h2>
+    <div class="warnbox">${text}</div>
+    <div class="foot"><button data-r="0">${L('Отмена', 'Cancel')}</button><button class="primary" data-r="1">${on ? L('Включить', 'Turn on') : L('Выключить', 'Turn off')}</button></div>`, box => {
+    box.querySelector('[data-r="0"]').onclick = closeModal;
+    box.querySelector('[data-r="1"]').onclick = async () => {
+      closeModal();
+      const r = await run(() => api('soft/enable', { on }));
+      if (r) {
+        if (r.ok) toast(on ? L('Раскладка записана — кнопки 1–11 под управлением программы', 'Layout written — buttons 1–11 are now handled by the app') : L('Обычная раскладка записана', 'Normal layout written'));
+        else toast(L('Режим сохранён, но запись не удалась: ', 'Mode saved, but the write failed: ') + r.error + L('. Раскладка запишется, когда мышь будет на связи.', '. The layout will be written when the mouse is connected.'), true);
+      }
+      await reload();
+    };
+  });
+}
+
+function softStatusHTML() {
+  const s = softStat();
+  if (!s.enabled) return '';
+  const prof = s.profile ? (S.data.soft.profiles.find(p => p.id === s.profile) || {}).name : '';
+  const parts = [
+    `<span class="dot ${s.hook ? 'ok' : 'bad'}"></span> ${s.hook ? L('перехват работает', 'hook running') : L('перехват не установлен', 'hook not installed')}`,
+    `${L('активное окно', 'foreground')}: <b>${esc(s.exe || '—')}</b>`,
+    `${L('привязки', 'bindings')}: <b>${esc(prof || L('общие', 'global'))}</b>`,
+  ];
+  return parts.join(' &nbsp;·&nbsp; ');
+}
+
+function viewSoft(v) {
+  const s = softStat(), sd = softDraft;
+  let prof = softScope === 'global' ? null : softProfile(softScope);
+  if (softScope !== 'global' && !prof) { softScope = 'global'; prof = null; }
+  const carrierOK = s.carrier.every((c, i) => c === s.carriable[i]);
+  softSig = JSON.stringify([s.enabled, s.carrier, s.carriable, s.onMouse, s.profile]);
+
+  let top;
+  if (!s.enabled) {
+    top = `<div class="card"><h2>${L('Программные кнопки', 'Soft buttons')}</h2>
+      <p>${L('Переназначение кнопок 1–11 по программам — мгновенно и без износа памяти мыши. Мышь записывается один раз, дальше всё делает SM809 Control.',
+        'Remap buttons 1–11 per program — instantly and without wearing out the mouse memory. The mouse is written once, then SM809 Control does the rest.')}</p>
+      <div class="row"><button class="primary" id="sen">${L('Включить…', 'Turn on…')}</button>
+      <span class="muted small">${L('Привязки можно настроить заранее — они начнут работать после включения.', 'You can set up bindings first — they start working once the mode is on.')}</span></div></div>`;
+  } else {
+    top = `<div class="card"><div class="row"><h2 style="margin:0">${L('Программные кнопки включены', 'Soft buttons are on')}</h2><span class="grow"></span>
+      <button id="sdis">${L('Выключить…', 'Turn off…')}</button></div>
+      <div class="row small" id="softStat">${softStatusHTML()}</div>
+      ${carrierOK ? '' : `<div class="row"><span class="pend" style="color:var(--warn)">${L('Раскладка в мыши не совпадает с профилем мыши (изменились кнопки или мышь не на связи).', 'The layout in the mouse does not match the mouse profile (buttons changed, or the mouse is offline).')}</span>
+        <button id="swr" ${st().busy ? 'disabled' : ''}>${L('Записать раскладку', 'Write the layout')}</button></div>`}
+      <div class="row"><label class="check"><input type="checkbox" id="srep" ${sd.keyRepeat ? 'checked' : ''}><span>${L('Автоповтор клавиши, пока кнопка зажата', 'Repeat the key while the button is held')}<small>${L('только для одной клавиши без модификаторов', 'single keys without modifiers only')}</small></span></label>
+      <label class="check"><input type="checkbox" id="srest" ${sd.restoreOnExit ? 'checked' : ''}><span>${L('Возвращать обычную раскладку при выходе', 'Restore the normal layout on exit')}<small>${L('кнопки работают и без программы, но каждый выход и запуск — запись в мышь', 'buttons work without the app, but every exit and start writes the mouse')}</small></span></label></div></div>`;
+  }
+
+  const chips = [`<button class="chip ${softScope === 'global' ? 'on' : ''}" data-scope="global">${L('Общие', 'Global')}</button>`]
+    .concat(sd.profiles.map(p => `<button class="chip ${softScope === p.id ? 'on' : ''} ${p.enabled ? '' : 'off'}" data-scope="${p.id}">${p.id === s.profile ? '<span class="dot ok"></span> ' : ''}${esc(p.name)}</button>`))
+    .join('') + `<button class="chip" id="sadd">+ ${L('Профиль программы', 'Program profile')}</button>`;
+
+  let pcard = '';
+  if (prof) {
+    const fg = s.exe && !prof.exes.includes(s.exe) ? s.exe : '';
+    pcard = `<div class="card"><div class="row">
+      <label class="field grow"><span>${L('Название', 'Name')}</span><input type="text" id="spname" value="${esc(prof.name)}"></label>
+      <label class="field grow" style="flex:2"><span>${L('Программы (имена exe через запятую)', 'Programs (exe names, comma separated)')}</span><input type="text" id="spexes" value="${esc(prof.exes.join(', '))}" placeholder="acad.exe, game.exe"></label></div>
+      <div class="row"><label class="check"><input type="checkbox" id="spen" ${prof.enabled ? 'checked' : ''}>${L('Включён', 'Enabled')}</label>
+      <label class="check"><input type="checkbox" id="sposd" ${prof.osd ? 'checked' : ''}>${L('Всплывающее окно при переключении', 'Popup on switch')}</label>
+      <span class="grow"></span>
+      ${fg ? `<button id="spfg">+ ${esc(fg)}</button>` : ''}
+      <button class="danger" id="spdel">${L('Удалить профиль', 'Delete profile')}</button></div>
+      <p class="muted small">${L('Профиль действует, пока окно одной из этих программ активно. Кнопки, не заданные здесь, работают как в общих.', 'The profile is used while a window of one of these programs is in front. Buttons not set here work as in Global.')}</p></div>`;
+  }
+
+  let hs = '', list = '';
+  BUTTON_POS.forEach(([x, y], i) => {
+    if (i >= SOFT_N) { hs += `<div class="hot locked dim" style="left:${x}px;top:${y}px" title="${L('Кнопка', 'Button')} ${i + 1}: ${L('не переназначается программно', 'not remapped by the app')}"></div>`; return; }
+    const e = softEffective(i, prof);
+    const fw = !s.carriable[i];
+    const held = (s.held || []).includes(softSlot(i));
+    hs += `<div class="hot ${i === softSel ? 'sel' : ''} ${fw ? 'fw' : ''} ${held ? 'held' : ''}" data-sb="${i}" style="left:${x}px;top:${y}px" title="${L('Кнопка', 'Button')} ${i + 1}: ${esc(softBindingText(e.b, i))}"></div>`;
+    const mark = fw ? L('мышь', 'mouse') : e.src === 'force' ? '!' : e.src === 'profile' ? L('проф.', 'prof.') : e.src === 'global' && prof ? L('общ.', 'glob.') : '';
+    list += `<div class="bitem ${i === softSel ? 'sel' : ''} ${fw ? 'fw' : ''} ${held ? 'held' : ''}" data-sb="${i}"><span class="n">${i + 1}</span><span class="l">${esc(fw ? softDefaultText(i) : softBindingText(e.b, i))}</span>${mark ? `<span class="k">${esc(mark)}</span>` : ''}</div>`;
+  });
+
+  v.innerHTML = top + `<div class="row" style="margin-bottom:14px;flex-wrap:wrap;gap:6px">${chips}</div>` + pcard
+    + `<div class="btnlayout"><div><div class="mouse"><img src="mouse.png" alt="">${hs}</div>
+      <p class="muted small">${L('Нажмите кнопку на мыши — она подсветится здесь (когда режим включён).', 'Press a button on the mouse — it lights up here (when the mode is on).')}</p></div>
+      <div><div class="card"><div class="blist">${list}</div></div><div class="card" id="sbed"></div></div></div>`;
+
+  const en = v.querySelector('#sen'); if (en) en.onclick = () => softEnable(true);
+  const dis = v.querySelector('#sdis'); if (dis) dis.onclick = () => softEnable(false);
+  const wr = v.querySelector('#swr'); if (wr) wr.onclick = async () => {
+    const r = await run(() => api('soft/enable', { on: true }));
+    if (r && !r.ok) toast(r.error, true);
+    await reload();
+  };
+  const rep = v.querySelector('#srep'); if (rep) rep.onchange = e => { sd.keyRepeat = e.target.checked; softTouch(); };
+  const rest = v.querySelector('#srest'); if (rest) rest.onchange = e => { sd.restoreOnExit = e.target.checked; softTouch(); };
+  v.querySelectorAll('[data-scope]').forEach(b => b.onclick = () => { softScope = b.dataset.scope; store.set('softScope', softScope); renderView(); });
+  v.querySelector('#sadd').onclick = async () => {
+    const name = await promptBox(L('Название профиля', 'Profile name'), s.exe && !/^(explorer|sm809control)\.exe$/.test(s.exe) ? s.exe.replace(/\.exe$/, '') : '', L('Создать', 'Create'));
+    if (!name) return;
+    const id = 'new' + Date.now().toString(36);
+    sd.profiles.push({ id, name, exes: [], enabled: true, bindings: {}, osd: true });
+    softScope = id; softTouch(); renderView();
+  };
+  if (prof) {
+    v.querySelector('#spname').oninput = e => { prof.name = e.target.value; softTouch(); };
+    v.querySelector('#spexes').onchange = e => { prof.exes = e.target.value.split(/[,;\s]+/).map(x => x.trim().toLowerCase()).filter(Boolean); softTouch(); renderView(); };
+    v.querySelector('#spen').onchange = e => { prof.enabled = e.target.checked; softTouch(); renderView(); };
+    v.querySelector('#sposd').onchange = e => { prof.osd = e.target.checked; softTouch(); };
+    const fgb = v.querySelector('#spfg'); if (fgb) fgb.onclick = () => { prof.exes.push(s.exe); softTouch(); renderView(); };
+    v.querySelector('#spdel').onclick = async () => {
+      if (!await confirmBox(L('Удалить профиль', 'Delete profile'), L(`Удалить ${esc(Q(prof.name))}?`, `Delete ${esc(Q(prof.name))}?`), L('Удалить', 'Delete'), true)) return;
+      sd.profiles = sd.profiles.filter(p => p !== prof);
+      softScope = 'global'; softTouch(); renderView();
+    };
+  }
+  v.querySelectorAll('[data-sb]').forEach(el => el.onclick = () => { softSel = +el.dataset.sb; renderView(); });
+  softEditor(v.querySelector('#sbed'), prof);
+}
+
+function softEditor(box, prof) {
+  const i = softSel, s = softStat(), slot = softSlot(i);
+  const map = prof ? prof.bindings : softDraft.global;
+  const b = map[slot] || { kind: '' };
+  const e = softEffective(i, prof);
+  let h = `<h2>${L('Кнопка', 'Button')} ${i + 1}: ${esc(s.carriable[i] ? softBindingText(e.b, i) : softDefaultText(i))}</h2>`;
+  if (!s.carriable[i]) {
+    box.innerHTML = h + `<p class="muted">${L(`Сейчас у этой кнопки действие самой мыши (${esc(softDefaultText(i))}): макрос, огонь, DPI, подсветка или левый клик. Такие кнопки программа не перехватывает. Чтобы переназначать её здесь, на вкладке «Кнопки» дайте ей обычную клавишу или кнопку мыши.`,
+      `This button currently has an action of the mouse itself (${esc(softDefaultText(i))}): a macro, rapid fire, DPI, lighting or the left click. The app does not take over such buttons. To remap it here, give it a normal key or mouse button on the Buttons tab.`)}</p>`;
+    return;
+  }
+  if (e.src === 'force' && prof) h += `<p class="muted small">⚠ ${L('Для этой кнопки задана общая привязка «главнее профилей» — здесь она не действует.', 'This button has a global binding that wins over profiles — the setting here has no effect.')}</p>`;
+  else h += `<p class="muted small">${L('Сейчас', 'Now')}: ${esc(SOFT_SRC()[e.src])}</p>`;
+  const kinds = (prof ? [['', L('Как в общих', 'As in Global')]] : []).concat([
+    ['default', L('Как в мыши', 'As in the mouse') + ' (' + softDefaultText(i) + ')'], ['keys', L('Клавиша / сочетание', 'Key / combination')],
+    ['mouse', L('Кнопка мыши', 'Mouse button')], ['disable', L('Ничего', 'Nothing')]]);
+  const cur = b.kind || (prof ? '' : 'default');
+  h += `<div class="cats">${kinds.map(([k, n]) => `<button data-kind="${k}" class="${k === cur ? 'on' : ''}">${esc(n)}</button>`).join('')}</div><div id="skb"></div>`;
+  if (!prof) h += `<label class="check" style="margin-top:10px"><input type="checkbox" id="sforce" ${b.force ? 'checked' : ''} ${cur === 'default' && !b.force ? '' : ''}><span>${L('Главнее профилей программ', 'Wins over program profiles')}<small>${L('эта привязка действует во всех программах', 'this binding applies in every program')}</small></span></label>`;
+  box.innerHTML = h;
+
+  const set = nb => {
+    if (!nb.kind && !nb.force) delete map[slot];
+    else if (!prof && nb.kind === 'default' && !nb.force) delete map[slot];
+    else map[slot] = nb;
+    softTouch(); renderView();
+  };
+  box.querySelectorAll('[data-kind]').forEach(el => el.onclick = () => {
+    const k = el.dataset.kind;
+    if (k === cur) return;
+    if (k === 'keys') return set({ kind: 'keys', keys: b.keys || '', force: b.force });
+    if (k === 'mouse') return set({ kind: 'mouse', button: b.button || 'middle', force: b.force });
+    set({ kind: k, force: b.force });
+  });
+  const fc = box.querySelector('#sforce');
+  if (fc) fc.onchange = () => set({ ...b, kind: b.kind || 'default', force: fc.checked });
+  const body = box.querySelector('#skb');
+  if (cur === 'keys') softKeysEditor(body, b, set);
+  if (cur === 'mouse') {
+    body.innerHTML = `<div class="catalog">${SOFT_MOUSE().map(([k, n]) => `<button data-mb="${k}" class="${b.button === k ? 'cur' : ''}">${esc(n)}</button>`).join('')}</div>`;
+    body.querySelectorAll('[data-mb]').forEach(el => el.onclick = () => set({ ...b, button: el.dataset.mb }));
+  }
+  if (cur === 'disable') body.innerHTML = `<p class="muted small">${L('Кнопка ничего не делает.', 'The button does nothing.')}</p>`;
+}
+
+const SOFT_MODS = ['Ctrl', 'Shift', 'Alt', 'Win'];
+function softKeysEditor(body, b, set) {
+  const parts = (b.keys || '').split('+').filter(Boolean);
+  let mods = SOFT_MODS.filter(m => parts.includes(m));
+  let key = parts.filter(p => !SOFT_MODS.includes(p)).join('+');
+  const keyList = (softKeys || []).filter(k => !k.mod);
+  body.innerHTML = `<div class="row">${SOFT_MODS.map(m => `<label class="check"><input type="checkbox" data-mod="${m}" ${mods.includes(m) ? 'checked' : ''}>${m}</label>`).join('')}</div>
+    <div class="row"><select id="skey"><option value="">${L('— клавиша —', '— key —')}</option>${keyList.map(k => `<option ${k.name === key ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}</select>
+    <span class="muted">${L('или', 'or')}</span><span class="keycap" id="scap" tabindex="0">${L('записать с клавиатуры', 'record from the keyboard')}</span></div>
+    <div class="row"><span class="muted">${L('Будет', 'Result')}: <b>${esc(b.keys || '—')}</b></span></div>
+    <p class="muted small">${L('Сочетание нажимается, пока зажата кнопка мыши. Запись с клавиатуры ловит и системные сочетания вроде Ctrl+Win+→; Esc — отмена.',
+      'The combination is held while the mouse button is held. Recording catches system combinations such as Ctrl+Win+→ too; Esc cancels.')}</p>`;
+  const apply = () => {
+    const k = mods.concat(key ? [key] : []).join('+');
+    set({ ...b, kind: 'keys', keys: k });
+  };
+  body.querySelectorAll('[data-mod]').forEach(el => el.onchange = () => {
+    mods = SOFT_MODS.filter(m => m === el.dataset.mod ? el.checked : mods.includes(m));
+    apply();
+  });
+  body.querySelector('#skey').onchange = e => { key = e.target.value; apply(); };
+  const cap = body.querySelector('#scap');
+  cap.onclick = async () => {
+    if (cap.classList.contains('listen')) return;
+    cap.classList.add('listen'); cap.textContent = L('нажмите сочетание…', 'press a combination…');
+    const r = await run(() => api('soft/capture', {}));
+    cap.classList.remove('listen');
+    if (r && r.combo) set({ ...b, kind: 'keys', keys: r.combo });
+    else { cap.textContent = L('записать с клавиатуры', 'record from the keyboard'); if (r) toast(L('Запись отменена', 'Recording cancelled')); }
+  };
+}
+
+// live update from the event stream: highlight held buttons, status line
+function softLive() {
+  const s = softStat();
+  const sig = JSON.stringify([s.enabled, s.carrier, s.carriable, s.onMouse, s.profile]);
+  if (sig !== softSig && !document.activeElement?.matches('input[type=text]')) { renderView(); return; }
+  document.querySelectorAll('[data-sb]').forEach(el => el.classList.toggle('held', (s.held || []).includes(softSlot(+el.dataset.sb))));
+  const stl = $('#softStat');
+  if (stl) stl.innerHTML = softStatusHTML();
+}

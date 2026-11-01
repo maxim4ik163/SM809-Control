@@ -15,7 +15,7 @@ import (
 	"unsafe"
 )
 
-const appVersion = "1.4.1"
+const appVersion = "1.5.0-beta1"
 
 const projectURL = "https://github.com/maxim4ik163/SM809-Control"
 
@@ -47,6 +47,7 @@ var (
 	store *Store
 	eng   *Engine
 	api   *API
+	soft  *softRuntime
 
 	callMu sync.Mutex
 	calls  []func()
@@ -437,6 +438,10 @@ func main() {
 	}
 	eng.onOSD = func(c osdContent) { uiCall(func() { osdShow(c) }) }
 	eng.onNotify = func(t, s string, warn bool) { uiCall(func() { notify(t, s, warn) }) }
+	soft = newSoftRuntime(store, eng, eng.onOSD)
+	soft.notify = api.notify
+	api.soft = soft
+	soft.run()
 
 	refreshAutostart()
 	osdCreate(hinst)
@@ -463,6 +468,16 @@ func main() {
 		_ = uiProc.Process.Kill()
 	}
 	uiMu.Unlock()
+	soft.stop()
+	store.mu.Lock()
+	restore := store.data.Settings.SoftBindings && store.data.Soft.RestoreOnExit && store.state.Carrier != [softSlots]bool{}
+	store.mu.Unlock()
+	if restore {
+		// one flash write: the buttons work without the app until the next start
+		if err := eng.ApplyPlain(eng.OnMouse(), 3*time.Second); err != nil {
+			logf("выход: обычная раскладка не записана: %v", err)
+		}
+	}
 	if curIcon != 0 {
 		pDestroyIcon.Call(curIcon)
 	}

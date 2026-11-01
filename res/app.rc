@@ -2,8 +2,8 @@
 1 ICON "app.ico"
 1 24 "app.manifest"
 1 VERSIONINFO
-FILEVERSION 1,4,1,0
-PRODUCTVERSION 1,4,1,0
+FILEVERSION 1,5,0,0
+PRODUCTVERSION 1,5,0,0
 FILEOS 0x40004
 FILETYPE 0x1
 BEGIN
@@ -13,8 +13,8 @@ BEGIN
     BEGIN
       VALUE "FileDescription", "SM809 Control"
       VALUE "ProductName", "SM809 Control"
-      VALUE "FileVersion", "1.4.1"
-      VALUE "ProductVersion", "1.4.1"
+      VALUE "FileVersion", "1.5.0-beta1"
+      VALUE "ProductVersion", "1.5.0-beta1"
       VALUE "OriginalFilename", "SM809Control.exe"
     END
   END

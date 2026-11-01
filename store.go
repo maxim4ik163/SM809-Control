@@ -82,6 +82,10 @@ type Settings struct {
 	Debounce    int  `json:"debounce"` // "ru" or "en"; chosen from the system language on first run
 
 	BTPaths []string `json:"btPaths"` // remembered Bluetooth HID paths → BT1, BT2
+
+	// SoftBindings: buttons 1..11 are written once as F13..F23 and remapped by
+	// the app (see softbind.go). Changed only through /api/soft/enable.
+	SoftBindings bool `json:"softBindings"`
 }
 
 type PopupStyle struct {
@@ -112,6 +116,7 @@ type Data struct {
 	Macros   []*Macro   `json:"macros"`
 	Rules    []Rule     `json:"rules"`
 	Settings Settings   `json:"settings"`
+	Soft     *SoftData  `json:"soft"` // software bindings
 }
 
 // DeviceState is what we last wrote to the mouse (signatures per command), so
@@ -124,7 +129,22 @@ type DeviceState struct {
 	FlashWrites int               `json:"flashWrites"`
 	LastProfile string            `json:"lastProfile"`
 	LastApplied time.Time         `json:"lastApplied"`
+	// Carrier: buttons 1..11 that send F13..F23 according to the last keys
+	// write (or the last memory read). The keyboard hook handles only these.
+	Carrier [softSlots]bool `json:"carrier"`
 }
+
+// setCarrier records which buttons carry F-keys and tells the hook.
+// Must be called with Store.mu held.
+func (s *Store) setCarrier(m [softSlots]bool) {
+	s.state.Carrier = m
+	if onCarrierChange != nil {
+		onCarrierChange(m)
+	}
+}
+
+// onCarrierChange is set on Windows (keyboard hook); nil in tests.
+var onCarrierChange func([softSlots]bool)
 
 func (d *DeviceState) lastSeq() int {
 	if d.Seq < 1 || d.Seq > 255 {
@@ -208,6 +228,7 @@ func defaultData() *Data {
 	return &Data{
 		Version:  1,
 		Profiles: []*Profile{p},
+		Soft:     defaultSoftData(),
 		Settings: Settings{
 			DefaultProfile: p.ID, BaseProfile: p.ID,
 			OSDProfile: true, OSDDPI: true, Popup: defaultPopup(),
@@ -285,6 +306,15 @@ func (s *Store) fixup() {
 	}
 	for i := range d.Rules {
 		d.Rules[i].Exe = lower(strings.TrimSpace(d.Rules[i].Exe))
+	}
+	if d.Soft == nil {
+		d.Soft = defaultSoftData()
+	}
+	if err := validateSoftData(d.Soft); err != nil {
+		if b, e := json.MarshalIndent(d.Soft, "", " "); e == nil {
+			_ = os.WriteFile(filepath.Join(s.dir, "soft.invalid.json"), b, 0644)
+		}
+		d.Soft = defaultSoftData()
 	}
 }
 

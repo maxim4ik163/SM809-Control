@@ -65,3 +65,21 @@ Firmware code for a key: `112, mods, usage` (cmd 1). F13–F23 = HID usages **10
 - Anything clicked with a worn left button must tolerate doubled clicks.
 - `go vet -unsafeptr=false` for hook callbacks (lParam → struct pointer).
 - Commits as `maxim4ik163 <130061064+maxim4ik163@users.noreply.github.com>`; pushing branches works, tags are created by the user on GitHub.
+
+## Implementation (1.5.0-beta1)
+
+Files: `softbind.go` (model, resolve, carrier layout — platform independent), `softkeys.go` (key table, HID usage → key name), `soft_windows.go` (hook thread, SendInput, foreground, combo capture), `softbind_test.go`, `linuxtest` `TestSoftBindings`, UI tab "Soft buttons" in `web/app.js`, probe `cmd/keyprobe`.
+
+Decisions made while implementing:
+
+- **Which buttons are carried.** Of b1–b11 only those whose action in the mouse profile can be reproduced by the app: keys and combinations, media/launch keys, right/middle/back/forward, "disabled". Macros, rapid fire, DPI, DPI lock, lighting toggle and any left click stay on the mouse unchanged (the left click can never be lost). The UI shows such buttons as "mouse" and explains how to make them remappable.
+- **Default action = the profile on the mouse.** Changing b4 from "forward" to "back" in the Buttons tab is not a flash write in soft mode (both are carried, the carrier packet is identical); changing it to a macro is.
+- **Only the keys command.** Turning the mode on/off, "restore on exit" and the start-up check write only command group `keys`; other pending profile changes stay pending.
+- **Device state.** `device.json` → `carrier` = buttons that send F13..F23 according to the last keys write or memory read. The hook swallows only those keys (also while the mode is being turned off and the write is still pending), and is installed only while that set is non-empty or a combination is being recorded.
+- **Restore on exit** (off by default): writes the normal layout on exit; at the next start, after the mouse is first seen, the carrier is written again (keys only, only if different).
+- **Profiles by foreground window** (`SetWinEventHook` + 2 s fallback); our own window and WebView2 keep the current profile. Popup on switch per profile, gated by Settings → popups → "on profile change".
+- **Import from the mouse** maps carrier keys back to the actions of the profile on the mouse.
+
+Still to verify on the real mouse (run `keyprobe.exe` first): VK 0x7C–0x86 / scan codes and auto-repeat over cable, 2.4G and Bluetooth; that a blocked carrier key reaches nothing; which physical button is which slot (the soft tab lights up the pressed button).
+
+Not done yet: software macros, running elevated (UIPI), a tray-menu entry.

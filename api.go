@@ -35,6 +35,8 @@ type API struct {
 
 	readMu   sync.Mutex
 	lastRead *mouseReadResult
+
+	soft softHost // software bindings runtime (keyboard hook); nil = not running
 }
 
 type mouseReadResult struct {
@@ -192,6 +194,7 @@ type stateView struct {
 	PollOptions []pollOption `json:"pollOptions"`
 	Pending     []string     `json:"pendingChanges"` // differences of the current profile vs mouse
 	Current     string       `json:"current"`        // profile that is (or should be) on the mouse
+	Soft        SoftStatus   `json:"soft"`
 }
 
 func (a *API) stateView() stateView {
@@ -216,7 +219,28 @@ func (a *API) stateView() stateView {
 	if p != nil {
 		v.Pending = a.eng.diff(&pc)
 	}
+	v.Soft = a.softStatus()
 	return v
+}
+
+// softStatus: what the hook handles and which buttons the mouse profile
+// would carry.
+func (a *API) softStatus() SoftStatus {
+	var s SoftStatus
+	if a.soft != nil {
+		s = a.soft.status()
+	}
+	onMouse := a.eng.OnMouse()
+	st := a.store
+	st.mu.Lock()
+	s.Enabled = st.data.Settings.SoftBindings
+	s.Carrier = st.state.Carrier
+	s.OnMouse = onMouse
+	if p := st.profile(onMouse); p != nil {
+		s.Carriable = carriedMask(p)
+	}
+	st.mu.Unlock()
+	return s
 }
 
 type allView struct {
@@ -246,6 +270,69 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 
 	case "state":
 		return a.stateView(), nil
+
+	case "soft/keys":
+		return keyDefs, nil
+
+	case "soft/save":
+		var req struct {
+			Soft *SoftData `json:"soft"`
+		}
+		if err := dec(&req); err != nil {
+			return nil, err
+		}
+		if req.Soft == nil {
+			return nil, errors.New(T("пустой запрос", "empty request"))
+		}
+		if err := validateSoftData(req.Soft); err != nil {
+			return nil, err
+		}
+		st.mu.Lock()
+		st.data.Soft = req.Soft
+		err := st.saveData()
+		st.mu.Unlock()
+		if a.soft != nil {
+			a.soft.changed()
+		}
+		return req.Soft, err
+
+	case "soft/enable":
+		var req struct {
+			On bool `json:"on"`
+		}
+		if err := dec(&req); err != nil {
+			return nil, err
+		}
+		st.mu.Lock()
+		st.data.Settings.SoftBindings = req.On
+		err := st.saveData()
+		st.mu.Unlock()
+		if err != nil {
+			return nil, err
+		}
+		if a.soft != nil {
+			a.soft.changed()
+		}
+		reason := "программные кнопки выкл"
+		if req.On {
+			reason = "программные кнопки вкл"
+		}
+		// writes just the key layout of the profile on the mouse; other
+		// unsaved-to-mouse changes of that profile stay pending
+		if err := a.eng.ApplyKeys(a.eng.OnMouse(), reason, true); err != nil {
+			return map[string]any{"ok": false, "error": err.Error()}, nil
+		}
+		return map[string]any{"ok": true}, nil
+
+	case "soft/capture":
+		if a.soft == nil {
+			return nil, errors.New(T("хук клавиатуры не работает", "the keyboard hook is not running"))
+		}
+		c, err := a.soft.capture(10 * time.Second)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"combo": c}, nil
 
 	case "profile/save":
 		var p Profile
@@ -452,6 +539,7 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		s := req.Settings
 		old := st.data.Settings
 		s.DefaultProfile, s.BaseProfile, s.BTPaths = old.DefaultProfile, old.BaseProfile, old.BTPaths
+		s.SoftBindings = old.SoftBindings // changed only through soft/enable
 		if s.Language != "ru" && s.Language != "en" {
 			s.Language = old.Language
 		}
@@ -567,7 +655,7 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		st.mu.Lock()
 		if cp := st.profile(cur); cp != nil {
 			res.Compared = cp.Name
-			for _, c := range buildCommands(cp, st.macro, sensor) {
+			for _, c := range buildCommands(deviceProfile(cp, st.data.Settings.SoftBindings), st.macro, sensor) {
 				if mouseSig[c.key] != signature(c) {
 					res.Differences = append(res.Differences, c.key)
 				}
@@ -576,6 +664,7 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		// the mouse is now known exactly: "what was sent" = what is there
 		mouseSig["debounce"] = debounceSignature(mem.Debounce)
 		st.state.Sent = mouseSig
+		st.setCarrier(carrierInMemory(p))
 		st.state.Synced = true
 		st.state.Seeded = true
 		_ = st.saveState()
@@ -607,7 +696,16 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		if strings.TrimSpace(req.Name) != "" {
 			p.Name = strings.TrimSpace(req.Name)
 		}
+		onMouse := a.eng.OnMouse()
 		st.mu.Lock()
+		// soft mode: buttons that carry F13..F23 get the action they stand for
+		if mp := st.profile(onMouse); mp != nil {
+			for i, on := range carrierInMemory(p) {
+				if on {
+					p.Buttons[i] = mp.Buttons[i]
+				}
+			}
+		}
 		st.data.Macros = append(st.data.Macros, cp.Macros...)
 		st.data.Profiles = append(st.data.Profiles, p)
 		st.data.Settings.BaseProfile = p.ID // it is what the mouse holds now
@@ -761,6 +859,7 @@ func (a *API) restore(b *fullBackup) (any, error) {
 		st.state.Seq = seq
 	}
 	st.fixup()
+	st.setCarrier(st.state.Carrier)
 	setLang(st.data.Settings.Language)
 	logEnabled = st.data.Settings.Debug
 	err1 := st.saveData()

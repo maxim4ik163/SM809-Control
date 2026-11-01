@@ -63,6 +63,8 @@ type applyJob struct {
 	reason    string
 	osd       bool
 	reset     bool
+	plain     bool   // write the normal layout even in soft mode (exit with "restore")
+	only      string // write only this command group ("keys"), leave other pending changes alone
 	done      chan error
 }
 
@@ -285,7 +287,7 @@ func (e *Engine) diff(p *Profile) []string {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	var out []string
-	for _, c := range append(buildCommands(p, st.macro, sensor), deviceCommands(st.data.Settings)...) {
+	for _, c := range append(buildCommands(deviceProfile(p, st.data.Settings.SoftBindings), st.macro, sensor), deviceCommands(st.data.Settings)...) {
 		if !st.state.Synced || st.state.Sent[c.key] != signature(c) {
 			out = append(out, c.key)
 		}
@@ -370,6 +372,54 @@ func (e *Engine) setBusy(b bool, msg string) {
 	e.changed()
 }
 
+// ApplyPlain writes the normal (non-carrier) layout of a profile and waits at
+// most timeout. Used on exit when "restore the normal layout" is on.
+func (e *Engine) ApplyPlain(profileID string, timeout time.Duration) error {
+	j := &applyJob{profileID: profileID, reason: "exit", plain: true, only: "keys", done: make(chan error, 1)}
+	select {
+	case e.jobs <- j:
+	case <-time.After(timeout):
+		return errors.New("queue busy")
+	}
+	select {
+	case err := <-j.done:
+		return err
+	case <-time.After(timeout):
+		return errors.New("timeout")
+	}
+}
+
+// ApplyKeys writes the key layout only (diff-only); other pending changes of
+// the profile stay pending. wait: return the result.
+func (e *Engine) ApplyKeys(profileID, reason string, wait bool) error {
+	j := &applyJob{profileID: profileID, reason: reason, only: "keys"}
+	if wait {
+		j.done = make(chan error, 1)
+	}
+	e.jobs <- j
+	if wait {
+		return <-j.done
+	}
+	return nil
+}
+
+// OnMouse returns the profile that is (as far as we know) on the mouse.
+func (e *Engine) OnMouse() string {
+	e.mu.Lock()
+	a := e.active
+	e.mu.Unlock()
+	if a != "" {
+		return a
+	}
+	st := e.store
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.state.LastProfile != "" && st.profile(st.state.LastProfile) != nil {
+		return st.state.LastProfile
+	}
+	return st.data.Settings.BaseProfile
+}
+
 // FactoryReset sends the reset command through the worker (keeps seq ordered).
 func (e *Engine) FactoryReset() { e.jobs <- &applyJob{reset: true} }
 
@@ -391,6 +441,7 @@ func (e *Engine) runReset() error {
 	st.mu.Lock()
 	st.state.Synced = false
 	st.state.Sent = map[string]string{}
+	st.setCarrier([softSlots]bool{}) // factory layout
 	st.state.FlashWrites += 3
 	st.state.Seq = e.seq
 	_ = st.saveState()
@@ -418,10 +469,11 @@ func (e *Engine) run(j *applyJob) error {
 	pc := *p
 	synced := st.state.Synced
 	devCmds := deviceCommands(st.data.Settings)
+	soft := st.data.Settings.SoftBindings && !j.plain
 	st.mu.Unlock()
 
 	sensor := e.sensorType()
-	cmds := buildCommands(&pc, func(id string) *Macro {
+	cmds := buildCommands(deviceProfile(&pc, soft), func(id string) *Macro {
 		st.mu.Lock()
 		defer st.mu.Unlock()
 		if m := st.macro(id); m != nil {
@@ -435,6 +487,9 @@ func (e *Engine) run(j *applyJob) error {
 	var todo []devCommand
 	st.mu.Lock()
 	for _, c := range cmds {
+		if j.only != "" && c.key != j.only {
+			continue
+		}
 		if j.force || !synced || st.state.Sent[c.key] != signature(c) {
 			todo = append(todo, c)
 		}
@@ -465,7 +520,7 @@ func (e *Engine) run(j *applyJob) error {
 	if err != nil {
 		if prim != nil && !prim.Link {
 			e.mu.Lock()
-			e.pending = &applyJob{profileID: j.profileID, force: j.force, reason: j.reason, osd: j.osd}
+			e.pending = &applyJob{profileID: j.profileID, force: j.force, reason: j.reason, osd: j.osd, only: j.only}
 			e.lastMsg = fmt.Sprintf(T("«%s» будет применён, когда мышь появится на связи", "“%s” will be applied when the mouse reconnects"), pc.Name)
 			e.mu.Unlock()
 			e.changed()
@@ -502,10 +557,17 @@ func (e *Engine) run(j *applyJob) error {
 		st.mu.Lock()
 		st.state.Sent[c.key] = signature(c)
 		st.state.FlashWrites += c.writes
+		if c.key == "keys" {
+			var m [softSlots]bool
+			if soft {
+				m = carriedMask(&pc)
+			}
+			st.setCarrier(m)
+		}
 		st.mu.Unlock()
 	}
 	st.mu.Lock()
-	if len(todo) == len(cmds) {
+	if len(todo) == len(cmds) && j.only == "" {
 		st.state.Synced = true
 	}
 	st.state.LastProfile = pc.ID
