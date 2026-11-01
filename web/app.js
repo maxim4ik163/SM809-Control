@@ -119,6 +119,7 @@ let mEditId = null, mDraft = null, mDirty = false, mSel = -1;
 let rulesDraft = null, rulesDirty = false;
 let setDraft = null, setDirty = false, autostartDraft = null;
 let dismissedErr = '';
+let dismissedExt = '';
 
 const profiles = () => S.data.profiles;
 const profileById = id => profiles().find(p => p.id === id);
@@ -210,6 +211,12 @@ function renderTop() {
     const p = profileById(s.pending);
     b += `<div class="bn info"><span>${L('Профиль', 'Profile')} ${esc(Q(p ? p.name : ''))} ${L('будет записан, когда мышь появится на связи.', 'will be written when the mouse reconnects.')}</span></div>`;
   }
+  const ext = (s.extChange || []).join(',');
+  if (ext && ext !== dismissedExt) {
+    b += `<div class="bn warn"><span><b>${L('Возможно, настройки мыши были изменены в другой программе', 'The mouse settings may have been changed by another program')}</b> (${s.extChange.map(cmdName).join(', ')}). ${L('Кнопки и макросы без кабеля проверить нельзя.', 'Buttons and macros cannot be checked without the cable.')}</span>
+      ${s.primary && s.primary.mode === 'wired' ? `<button id="bnExtRead">${L('Прочитать из мыши', 'Read from the mouse')}</button>` : ''}
+      <button class="primary" id="bnExtFix" ${s.busy ? 'disabled' : ''}>${L('Вернуть', 'Restore')} ${esc(Q(cur ? cur.name : ''))}</button><button class="small" id="bnExtHide">${L('Скрыть', 'Dismiss')}</button></div>`;
+  }
   if (s.lastError && s.lastError !== dismissedErr) {
     b += `<div class="bn err"><span>${L('Ошибка', 'Error')}: ${esc(s.lastError)}</span><button class="small" id="bnErr">${L('Скрыть', 'Dismiss')}</button></div>`;
   }
@@ -218,6 +225,12 @@ function renderTop() {
   $('#banner').innerHTML = b;
   const sy = $('#bnSync');
   if (sy) sy.onclick = () => run(() => api('profile/apply', { id: st().current, force: true }), L('Записываю профиль в мышь…', 'Writing the profile to the mouse…'));
+  const xf = $('#bnExtFix');
+  if (xf) xf.onclick = () => run(() => api('profile/apply', { id: st().current }), L('Записываю отличия в мышь…', 'Writing the differences to the mouse…'));
+  const xr = $('#bnExtRead');
+  if (xr) xr.onclick = () => readFromMouse(xr);
+  const xh = $('#bnExtHide');
+  if (xh) xh.onclick = () => { dismissedExt = (st().extChange || []).join(','); renderTop(); };
   const br = $('#bnRead');
   if (br) br.onclick = () => readFromMouse(br);
   const be = $('#bnErr');

@@ -580,6 +580,9 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		st.state.Seeded = true
 		_ = st.saveState()
 		st.mu.Unlock()
+		a.eng.mu.Lock()
+		a.eng.extChange, a.eng.extCount = nil, 0
+		a.eng.mu.Unlock()
 		a.readMu.Lock()
 		a.lastRead = res
 		a.readMu.Unlock()

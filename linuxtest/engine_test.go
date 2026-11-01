@@ -341,3 +341,32 @@ func TestDebounce(t *testing.T) {
 		t.Fatal("sent while not managed")
 	}
 }
+
+func TestExternalChange(t *testing.T) {
+	st, e := setup(t)
+	def := st.data.Settings.DefaultProfile
+	e.handleReport(report(true, 1, 1, 9))
+	p := st.profile(def)
+	p.Lighting, p.PollRate = 9, 1
+	e.Apply(def, true, "t", false, true)
+	takeSent()
+	st.state.LastApplied = time.Now().Add(-time.Minute)
+	var notes int
+	e.onNotify = func(string, string, bool) { notes++ }
+	e.handleReport(report(true, 1, 1, 3)) // lighting changed elsewhere
+	if e.extChange != nil {
+		t.Fatal("single report must not trigger")
+	}
+	e.handleReport(report(true, 1, 1, 3))
+	e.handleReport(report(true, 1, 1, 3))
+	if len(e.extChange) != 1 || e.extChange[0] != "light" || notes != 1 {
+		t.Fatalf("ext %v notes %d", e.extChange, notes)
+	}
+	e.Apply(def, false, "t", false, true)
+	if s := takeSent(); len(s) != 1 || s[0][0] != 6 {
+		t.Fatalf("restore sent %d", len(s))
+	}
+	if e.extChange != nil {
+		t.Fatal("not cleared")
+	}
+}

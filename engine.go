@@ -46,6 +46,10 @@ type Engine struct {
 	lastErr  string
 	lastMsg  string
 	pending  *applyJob
+
+	// external-change detection from the status report
+	extCount  int
+	extChange []string // groups that differ from what we wrote; nil = none
 	seq      int
 
 	jobs chan *applyJob
@@ -164,8 +168,13 @@ func (e *Engine) handleReport(r statusReport) {
 	if ns.Link && pend != nil {
 		e.pending = nil
 	}
+	extNotify := e.checkExternal(ns, activeP, st.state)
 	st.mu.Unlock()
 	e.mu.Unlock()
+	if extNotify != "" && e.onNotify != nil {
+		e.onNotify(T("SM809: настройки мыши изменены?", "SM809: mouse settings changed?"),
+			T("Похоже, их поменяли в другой программе: ", "They seem to have been changed by another program: ")+extNotify, true)
+	}
 
 	if dpiPopup != nil && e.onOSD != nil {
 		e.onOSD(*dpiPopup)
@@ -178,6 +187,69 @@ func (e *Engine) handleReport(r statusReport) {
 		e.jobs <- pend
 	}
 	e.changed()
+}
+
+// checkExternal compares what the mouse reports (polling rate, lighting mode)
+// with the profile we last wrote. Caller holds e.mu and the store lock.
+// Returns a text for a one-time notification when a new mismatch appears.
+func (e *Engine) checkExternal(ns *DevStatus, p *Profile, state *DeviceState) string {
+	if p == nil || !ns.Link || !state.Synced || e.busy || e.pending != nil || time.Since(state.LastApplied) < 15*time.Second {
+		e.extCount = 0
+		return ""
+	}
+	var diff []string
+	if (ns.Mode == "wired" || ns.Mode == "dongle") && validRate(ns.Rate) && validRate(p.PollRate) &&
+		pollHz(p.PollRate) <= pollHz(maxRateCode(ns.MaxRate)) && ns.Rate != p.PollRate {
+		diff = append(diff, "poll")
+	}
+	toggle := false
+	for _, b := range p.Buttons {
+		if b.Kind != "macro" && b.Code == [3]int{96, 4, 0} {
+			toggle = true // lighting can legitimately be switched by a button
+		}
+	}
+	if !toggle && ns.Light != p.Lighting {
+		diff = append(diff, "light")
+	}
+	if len(diff) == 0 {
+		e.extCount = 0
+		e.extChange = nil
+		return ""
+	}
+	e.extCount++
+	if e.extCount < 2 || e.extChange != nil { // need two reports in a row; notify once
+		return ""
+	}
+	e.extChange = diff
+	// forget that these groups are on the mouse, so a normal (diff-only)
+	// apply rewrites exactly them
+	for _, k := range diff {
+		delete(state.Sent, k)
+	}
+	var names []string
+	for _, k := range diff {
+		names = append(names, map[string]string{"poll": T("частота опроса", "polling rate"), "light": T("подсветка", "lighting")}[k])
+	}
+	return strings.Join(names, ", ")
+}
+
+func pollHz(code int) int {
+	return map[int]int{8: 125, 4: 250, 2: 500, 1: 1000, 17: 2000, 18: 4000, 20: 8000}[code]
+}
+
+// maxRateCode maps the status "max rate" byte to a polling code (see pollOptions).
+func maxRateCode(m int) int {
+	switch m {
+	case 8:
+		return 20
+	case 4:
+		return 18
+	case 2:
+		return 17
+	case 49:
+		return 4
+	}
+	return 1
 }
 
 func (e *Engine) dpiOSD(p *Profile, level int, style PopupStyle) *osdContent {
@@ -398,6 +470,7 @@ func (e *Engine) runReset() error {
 	e.mu.Lock()
 	e.active = ""
 	e.lastErr = ""
+	e.extChange, e.extCount = nil, 0
 	e.lastMsg = T("Мышь сброшена к заводским настройкам. Запишите профиль целиком, чтобы вернуть свои настройки.", "The mouse was reset to factory settings. Write a profile in full to restore your settings.")
 	e.mu.Unlock()
 	e.changed()
@@ -517,6 +590,7 @@ func (e *Engine) run(j *applyJob) error {
 	e.mu.Lock()
 	e.active = pc.ID
 	e.lastErr = ""
+	e.extChange, e.extCount = nil, 0
 	e.lastMsg = fmt.Sprintf(T("«%s» записан в мышь (%s)", "“%s” written to the mouse (%s)"), pc.Name, strings.Join(keys, ", "))
 	e.mu.Unlock()
 	showOSD()
@@ -632,6 +706,7 @@ type EngineSnapshot struct {
 	Progress    string       `json:"progress"`
 	LastError   string       `json:"lastError"`
 	LastMessage string       `json:"lastMessage"`
+	ExtChange   []string     `json:"extChange"`
 	Synced      bool         `json:"synced"`
 	FlashWrites int          `json:"flashWrites"`
 	Sensor      SensorInfo   `json:"sensor"`
@@ -656,6 +731,7 @@ func (e *Engine) Snapshot() EngineSnapshot {
 	s.Active = e.active
 	s.Stack = append([]stackEntry(nil), e.stack...)
 	s.Busy, s.Progress, s.LastError, s.LastMessage = e.busy, e.progress, e.lastErr, e.lastMsg
+	s.ExtChange = e.extChange
 	if e.pending != nil {
 		s.Pending = e.pending.profileID
 	}
