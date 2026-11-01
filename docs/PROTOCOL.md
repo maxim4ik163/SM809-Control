@@ -117,3 +117,7 @@ Feature report `0xBF` (136 bytes incl. ID, wired USB interface 1) is the firmwar
 ### Macros
 
 Slot index `i = button − 1` (button 16 uses slot 12 → i = 11). `i < 8` → `0x7D000 + i·0x200`, otherwise `0x7B000 + (i−8)·0x200`. Content is the event stream described above, zero-padded.
+
+### Cursor moves in macros
+
+The firmware's macro player handles event types `0x4_` (X) and `0x5_` (Y) by writing the signed value into the motion accumulators (`0x400AA8/0x400AAA`), but it does not raise the "motion pending" flag that the sensor path sets, and the accumulators are cleared/overwritten before a report is built. In practice the move is lost (confirmed on a real mouse; the vendor web driver has the same result). SM809 Control therefore disables cursor-move events in the macro editor.

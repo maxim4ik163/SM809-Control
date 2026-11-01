@@ -723,6 +723,7 @@ function renderMacroEditor(ed) {
     <div class="meter ${bytes > MAX_BYTES ? 'full' : ''}"><i style="width:${Math.min(100, bytes / MAX_BYTES * 100)}%"></i></div>
     <div class="row small muted" style="margin-top:4px"><span>${m.events.length} ${L('из', 'of')} ${MAX_BYTES / 3} ${L('действий', 'actions')}</span><span class="grow"></span><span>${mSel >= 0 ? L('новые действия вставляются после строки ', 'new actions are inserted after row ') + (mSel + 1) : L('новые действия добавляются в конец', 'new actions are added at the end')}</span></div>
     ${warns.map(w => `<p class="small" style="color:var(--warn)">⚠ ${esc(w)}</p>`).join('')}
+    ${m.events.some(e => e.type === 'cursorMove') ? `<p class="small" style="color:var(--warn)">⚠ ${L('Сдвиги курсора в этом макросе мышь с заводской прошивкой не выполнит — их можно удалить.', 'The mouse with stock firmware will not perform the cursor moves in this macro — you can delete them.')}</p>` : ''}
 
     <h3>${L('Запись', 'Recording')}</h3>
     <div class="recpad ${rec ? 'rec' : ''}" id="pad">${rec ? L('● Идёт запись: нажимайте клавиши, кликайте мышью в этой области. Колесо и Win записать нельзя.', '● Recording: press keys and click mouse buttons inside this area. The wheel and Win key cannot be recorded.')
@@ -734,14 +735,15 @@ function renderMacroEditor(ed) {
     <h3>${L('Добавить вручную', 'Add manually')}</h3>
     <div class="row"><select id="akey">${keyOptions(true)}</select><button class="small" data-add="press">${L('Нажать и отпустить', 'Press and release')}</button><button class="small" data-add="keydown">${L('Зажать', 'Press')}</button><button class="small" data-add="keyup">${L('Отпустить', 'Release')}</button><span style="width:20px"></span><button class="small" id="atext">${L('Ввести текст…', 'Type text…')}</button></div>
     <div class="row"><input type="number" id="adel" min="1" max="${MAX_DELAY}" value="100"> ${ms} <button class="small" data-add="delay">${L('Пауза', 'Delay')}</button>
-      <span style="width:20px"></span><select id="adir"><option value="left">${L('влево', 'left')}</option><option value="right">${L('вправо', 'right')}</option><option value="up">${L('вверх', 'up')}</option><option value="down">${L('вниз', 'down')}</option></select>
-      <input type="number" id="aval" min="1" max="127" value="10"><button class="small" data-add="move">${L('Сдвиг курсора', 'Move cursor')}</button></div>
+      <span style="width:20px"></span><span class="disabledgrp" title="${L('Заводская прошивка SM809 не выполняет сдвиг курсора из макроса (проверено: не работает и в официальном драйвере).', 'The stock SM809 firmware does not perform cursor moves from macros (confirmed: it does not work in the official driver either).')}"><select id="adir" disabled><option>${L('влево', 'left')}</option></select>
+      <input type="number" id="aval" value="10" disabled><button class="small" data-add="move" disabled>${L('Сдвиг курсора', 'Move cursor')}</button>
+      <span class="small muted">${L('не работает на заводской прошивке', 'does not work on the stock firmware')}</span></span></div>
 
     <div class="sep"></div>
     <div class="row"><button class="primary" id="msave" ${mDirty ? '' : 'disabled'}>${L('Сохранить макрос', 'Save macro')}</button><button id="mrev" ${mDirty && mEditId !== 'new' ? '' : 'disabled'}>${L('Отменить', 'Revert')}</button>
       <span class="grow"></span><button class="small" id="mclear" ${m.events.length ? '' : 'disabled'}>${L('Очистить', 'Clear')}</button><button class="small danger" id="mdel" ${mEditId && mEditId !== 'new' ? '' : 'disabled'}>${L('Удалить макрос', 'Delete macro')}</button></div>
-    <p class="muted small">${L(`Пауза — время перед действием (до ${MAX_DELAY} мс; у сдвига курсора — до 255 мс). Сдвиг курсора — 1…127 точек за шаг. Кодирование совпадает с официальным драйвером.`,
-      `Delay is the time before the action (up to ${MAX_DELAY} ms; up to 255 ms for cursor moves). A cursor move is 1…127 counts per step. The encoding matches the official driver.`)}</p></div>`;
+    <p class="muted small">${L(`Пауза — время перед действием (до ${MAX_DELAY} мс; у сдвига курсора — до 255 мс). Кодирование совпадает с официальным драйвером.`,
+      `Delay is the time before the action (up to ${MAX_DELAY} ms; up to 255 ms for cursor moves). The encoding matches the official driver.`)}</p></div>`;
 
   const mark = () => { mDirty = true; };
   ed.querySelector('#mname').oninput = e => { m.name = e.target.value; mark(); ed.querySelector('#msave').disabled = false; };
@@ -775,7 +777,7 @@ function renderMacroEditor(ed) {
       case 'keydown': insert([{ type: 'keydown', code: k, delay: 30 }]); break;
       case 'keyup': insert([{ type: 'keyup', code: k, delay: 30 }]); break;
       case 'delay': insert([{ type: 'delay', code: 0, delay: Math.max(1, Math.min(MAX_DELAY, +ed.querySelector('#adel').value | 0)) }]); break;
-      case 'move': insert([{ type: 'cursorMove', code: 0, delay: 10, direction: ed.querySelector('#adir').value, value: Math.max(1, Math.min(127, +ed.querySelector('#aval').value | 0)) }]); break;
+      case 'move': break; // disabled: the stock firmware drops macro cursor moves
     }
   });
 

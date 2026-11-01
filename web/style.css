@@ -237,3 +237,4 @@ tr.off td { opacity: .5; }
 .card.flash { box-shadow: 0 0 0 2px var(--accent); transition: box-shadow .3s; }
 .warnbox { max-width: 600px; font-size: 13.5px; }
 .warnbox p { margin: 0 0 10px; }
+.disabledgrp { display: inline-flex; gap: 8px; align-items: center; opacity: .55; }
