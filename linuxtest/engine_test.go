@@ -444,14 +444,14 @@ func TestButtonModes(t *testing.T) {
 	if cmds(takeSent()) != "1,1" || st.state.Carrier != want || want[1] {
 		t.Fatal("hw change")
 	}
-	// button 16 (DPI−) as a software button: browser-stop consumer key; the
+	// button 16 (DPI−) as a software button: International1 (Ro); the
 	// left click (button 12) can never become one
 	hw[15], hw[lockedSlot] = false, false
 	if c, m := post(t, a, "buttons/hw", map[string]any{"hw": hw}); c != 200 || m["ok"] != true {
 		t.Fatal(m)
 	}
 	s16 := takeSent()
-	if !st.data.Settings.HWButtons[lockedSlot] || st.data.Settings.HWButtons[15] || len(s16) != 2 || !strings.Contains(fmt.Sprintf("% x", s16[0]), "80 26 02") {
+	if !st.data.Settings.HWButtons[lockedSlot] || st.data.Settings.HWButtons[15] || len(s16) != 2 || !strings.Contains(fmt.Sprintf("% x", s16[0]), "70 00 87") {
 		t.Fatalf("button 16: hw %v, sent % x", st.data.Settings.HWButtons, s16)
 	}
 	if !st.state.Carrier[15] || st.state.Carrier[lockedSlot] {

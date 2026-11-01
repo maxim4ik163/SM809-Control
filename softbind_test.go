@@ -111,7 +111,7 @@ func TestSoftSlots(t *testing.T) {
 	if carrierSlotOfVK(0x7B) != -1 || carrierSlotOfVK(0x88) != -1 || carrierSlotOfVK(0) != -1 {
 		t.Error("F12 / VK 0x88 are not carrier keys")
 	}
-	want := map[int]uint32{0: 0x7C, 10: 0x86, 12: 0x87, 13: 0xAA, 14: 0xAB, 15: 0xA9}
+	want := map[int]uint32{0: 0x7C, 10: 0x86, 12: 0x87, 13: 0x1C, 14: 0x1D, 15: 0xC1}
 	for i, vk := range want {
 		if carrierVK(i) != vk {
 			t.Errorf("button %d: VK %#x, want %#x", i+1, carrierVK(i), vk)
@@ -417,7 +417,7 @@ func TestMigrateBeta(t *testing.T) {
 }
 
 // Every button but the left click as a software button: buttons 13..16 get
-// F24 and the browser consumer keys; button 12 keeps the left click. Expected
+// F24 and the International keys; button 12 keeps the left click. Expected
 // packets computed independently (same rules as TestCarrierPackets).
 func TestCarrierAllButtons(t *testing.T) {
 	p := newProfile("t", 0)
@@ -436,7 +436,7 @@ func TestCarrierAllButtons(t *testing.T) {
 	}
 	pk := EncodeKeys(codes, func() byte { return 0 })
 	exp := []string{
-		"01000268100100700073802102802a02802602700071700072700068700069",
+		"0100025d10010070007370008a70008b700087700071700072700068700069",
 		"0100121e70006a70006b70006c70006d70007070006e70006fffffffffffff",
 	}
 	for i := range exp {
@@ -456,25 +456,49 @@ func TestCarrierAllButtons(t *testing.T) {
 }
 
 func TestHookEventKind(t *testing.T) {
+	if hookEventKind(0x7C, false, 0) != hookKeyboard || hookEventKind(0x41, false, 0) != hookKeyboard {
+		t.Fatal("real key presses")
+	}
+	if hookEventKind(0xAA, true, 0) != hookIgnore || hookEventKind(0x7C, true, injectedMark) != hookIgnore {
+		t.Fatal("injected input must be ignored")
+	}
+}
+
+// Carrier keys are matched by virtual key, or by scan code when a layout
+// reports another virtual key for the International keys.
+func TestCarrierSlotOf(t *testing.T) {
 	cases := []struct {
-		vk       uint32
-		injected bool
-		extra    uintptr
+		vk, scan uint32
+		ext      bool
 		want     int
 	}{
-		{0x7C, false, 0, hookKeyboard},         // F13 from the mouse
-		{0x41, false, 0, hookKeyboard},         // any real key (capture, "until any key")
-		{0xAA, true, 0, hookSystemCarrier},     // browser search injected by Windows for the mouse
-		{0xAB, true, 0, hookSystemCarrier},     // browser favorites
-		{0xA9, true, 0, hookSystemCarrier},     // browser stop
-		{0xAA, true, injectedMark, hookIgnore}, // our own SendInput
-		{0x7C, true, 0, hookIgnore},            // injected F13: not from the mouse
-		{0xAF, true, 0, hookIgnore},            // injected volume up: not a carrier
-		{0x41, true, injectedMark, hookIgnore},
+		{0x7C, 0x64, false, 0},
+		{0x86, 0x6E, false, 10},
+		{0x87, 0x76, false, 12},
+		{0x1C, 0x79, false, 13},
+		{0x1D, 0x7B, false, 14},
+		{0xC1, 0x73, false, 15},
+		{0xFF, 0x73, false, 15}, // Ro under a layout with another VK
+		{0x00, 0x79, false, 13},
+		{0x41, 0x1E, false, -1},
+		{0x2E, 0x53, true, -1}, // Delete (extended) is not a carrier
+		{0x00, 0x73, true, -1}, // extended scan 73: not ours
+		{0xAA, 0, false, -1},   // the browser keys of 2.1.0/2.1.1 are not carriers any more
 	}
 	for _, c := range cases {
-		if got := hookEventKind(c.vk, c.injected, c.extra); got != c.want {
-			t.Errorf("vk %#x injected %v extra %#x: %d, want %d", c.vk, c.injected, c.extra, got, c.want)
+		if got := carrierSlotOf(c.vk, c.scan, c.ext); got != c.want {
+			t.Errorf("vk %#x scan %#x ext %v: %d, want %d", c.vk, c.scan, c.ext, got, c.want)
 		}
+	}
+	// carrier codes are distinct keyboard usages the button catalog never uses
+	seen := map[[3]int]bool{}
+	for i, c := range carriers {
+		if i == lockedSlot {
+			continue
+		}
+		if c.Code[0] != 112 || seen[c.Code] {
+			t.Fatalf("button %d: %v", i+1, c.Code)
+		}
+		seen[c.Code] = true
 	}
 }

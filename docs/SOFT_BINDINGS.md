@@ -119,3 +119,10 @@ The separate "Soft buttons" tab of the betas is gone; it made it unclear which a
 - **Browser keys (buttons 14–16) arrive injected.** Windows turns HID consumer usages into keystrokes itself: the hook sees VK 0xA9/0xAA/0xAB with `LLKHF_INJECTED`, scan 00 + E0, and Raw Input reports no device. 2.1.0 ignored all injected events, so these buttons did nothing. 2.1.1 accepts injected browser carrier keys unless they carry our own `injectedMark` (`hookEventKind`). Whether blocking them in the hook also stops Raw Input / app commands is to be confirmed (the probe now blocks them in phase 2 and logs `dwExtraInfo`).
 - **F24 (button 13)** did not appear in the log — not tested yet (button 13 was probably not a software button).
 - Not yet tested: cable and Bluetooth.
+
+## Probe 2 (2026-11-02, dongle) — `testdata/keyprobe-2026-11-02.log` → 2.1.2
+
+- F13–F23 (incl. F22 on button 10) confirmed again. Held F-keys get Windows typematic repeat: first after ~505 ms, then every 31–47 ms; the app ignores those repeats and repeats single keys itself.
+- Browser keys (2.1.0/2.1.1 carriers of buttons 14–16): arrive injected with `dwExtraInfo` 0, **no auto-repeat**, and blocking them in the hook works (0 raw events) — **but without the app they act**: the middle button opened the browser's search bar. That breaks "software buttons do nothing without the app".
+- 2.1.2: buttons 14–16 use keyboard-page International4/5/1 (`112,0,0x8A/0x8B/0x87`, VK_CONVERT / VK_NONCONVERT / VK_ABNT_C1, scan 79/7B/73). Real key presses like the F-keys; no effect without a Japanese IME. The hook matches carriers by VK or (non-extended) scan code. `carrierTableVersion` 2 makes the app rewrite the key layout once on start when the mouse still has old codes. The hook ignores injected input again.
+- F24 (button 13) still untested. To confirm with keyprobe: buttons 13–16 software, app closed, Notepad/browser in front must show nothing.

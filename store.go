@@ -150,12 +150,15 @@ type DeviceState struct {
 	// Carrier: buttons 1..11 that send F13..F23 according to the last keys
 	// write (or the last memory read). The keyboard hook handles only these.
 	Carrier [softSlots]bool `json:"carrier"`
+	// CarrierVer: version of the carrier key table used for that write.
+	CarrierVer int `json:"carrierVer,omitempty"`
 }
 
 // setCarrier records which buttons carry F-keys and tells the hook.
 // Must be called with Store.mu held.
 func (s *Store) setCarrier(m [softSlots]bool) {
 	s.state.Carrier = m
+	s.state.CarrierVer = carrierTableVersion
 	if onCarrierChange != nil {
 		onCarrierChange(m)
 	}

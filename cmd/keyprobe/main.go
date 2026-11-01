@@ -74,16 +74,24 @@ var (
 
 func logf(format string, a ...any) { fmt.Fprintf(out, format+"\n", a...) }
 
-// carrier keys of SM809 Control: F13..F24 and three browser keys
-var browserKeys = map[uint32]string{0xA9: "BrowserStop", 0xAA: "BrowserSearch", 0xAB: "BrowserFavorites"}
+// carrier keys of SM809 Control 2.1.2: F13..F24, and for buttons 14..16 the
+// International keys (by virtual key, or by scan code if a layout names them
+// differently); browser keys of 2.1.0/2.1.1 kept for comparison.
+var otherKeys = map[uint32]string{0x1C: "Henkan", 0x1D: "Muhenkan", 0xC1: "Ro", 0xA9: "BrowserStop", 0xAA: "BrowserSearch", 0xAB: "BrowserFavorites"}
+var carrierScans = map[uint32]string{0x76: "F24", 0x79: "Henkan", 0x7B: "Muhenkan", 0x73: "Ro"}
 
-func isF(vk uint32) bool { return (vk >= vkF13 && vk <= vkF24) || browserKeys[vk] != "" }
+func isF(vk uint32) bool { return (vk >= vkF13 && vk <= vkF24) || otherKeys[vk] != "" }
+
+// isCarrier: what SM809 Control 2.1.2 blocks (real key presses only).
+func isCarrier(vk, scan uint32, ext bool) bool {
+	return (vk >= vkF13 && vk <= vkF24) || vk == 0x1C || vk == 0x1D || vk == 0xC1 || (!ext && carrierScans[scan] != "")
+}
 
 func fname(vk uint32) string {
 	if vk >= vkF13 && vk <= vkF24 {
 		return fmt.Sprintf("F%d", 13+vk-vkF13)
 	}
-	if n := browserKeys[vk]; n != "" {
+	if n := otherKeys[vk]; n != "" {
 		return n
 	}
 	return fmt.Sprintf("VK %02X", vk)
@@ -122,7 +130,7 @@ func record(e event) {
 func kbdHook(code int, wp, lp uintptr) uintptr {
 	if code == 0 {
 		k := *(**kbdLL)(unsafe.Pointer(&lp))
-		if isF(k.VkCode) {
+		if isF(k.VkCode) || (k.Flags&LLKHF_EXTENDED == 0 && carrierScans[k.ScanCode] != "") {
 			up := k.Flags&LLKHF_UP != 0
 			e := event{t: time.Since(start), src: "HOOK", vk: k.VkCode, scan: k.ScanCode,
 				ext: k.Flags&LLKHF_EXTENDED != 0, up: up, inj: k.Flags&LLKHF_INJECTED != 0, extra: k.ExtraInfo}
@@ -133,9 +141,8 @@ func kbdHook(code int, wp, lp uintptr) uintptr {
 				delete(down, k.VkCode)
 			}
 			record(e)
-			// like SM809 Control: real carrier keys, and browser keys that
-			// Windows injects for the mouse (HID consumer page)
-			if blocking && (!e.inj || browserKeys[k.VkCode] != "") {
+			// like SM809 Control: real carrier key presses
+			if blocking && !e.inj && isCarrier(k.VkCode, k.ScanCode, e.ext) {
 				return 1
 			}
 		}
@@ -163,11 +170,11 @@ func decodeRaw(lp uintptr) (event, bool) {
 	mk := *(*uint16)(unsafe.Pointer(&buf[24]))
 	fl := *(*uint16)(unsafe.Pointer(&buf[26]))
 	vk := *(*uint16)(unsafe.Pointer(&buf[30]))
-	if !isF(uint32(vk)) {
-		return event{}, false
+	dev := rawDeviceName(*(*uintptr)(unsafe.Pointer(&buf[8])))
+	if !isF(uint32(vk)) && !isSM809(dev) && !(fl&2 == 0 && carrierScans[uint32(mk)] != "") {
+		return event{}, false // other keyboards' ordinary keys
 	}
-	return event{t: time.Since(start), src: "RAW", vk: uint32(vk), scan: uint32(mk), ext: fl&2 != 0, up: fl&1 != 0,
-		dev: rawDeviceName(*(*uintptr)(unsafe.Pointer(&buf[8])))}, true
+	return event{t: time.Since(start), src: "RAW", vk: uint32(vk), scan: uint32(mk), ext: fl&2 != 0, up: fl&1 != 0, dev: dev}, true
 }
 
 func wndProc(h, m, wp, lp uintptr) uintptr {
@@ -381,15 +388,15 @@ func main() {
 	logf("SM809 key probe. Log: %s", logPath)
 	logf("Assign F13..F23 to some buttons in SM809 Control first (Buttons → Key).")
 	logf("")
-	logf("Phase 1 (45 s, watch only): press each F-key button a few times quickly,")
-	logf("then HOLD one for about 3 seconds (auto-repeat).")
+	logf("Phase 1 (45 s, watch only): press each software button a few times, then HOLD one")
+	logf("for about 3 seconds. Keep Notepad and then a browser in front: buttons 13-16 must")
+	logf("type or do NOTHING there (SM809 Control is not running).")
 	waitEnter("Press Enter to start phase 1… ")
 	ev := phase(45, false)
 	summary(ev, "phase 1: watch")
 
-	logf("\nPhase 2 (20 s): F13..F24 and the browser keys are BLOCKED in the hook. Press the same")
-	logf("buttons again; RAW lines should NOT appear any more (nothing else sees the key).")
-	logf("Keep a browser in front: browser Search / Favorites / Stop must do nothing now.")
+	logf("\nPhase 2 (20 s): the carrier keys are BLOCKED in the hook, like SM809 Control does.")
+	logf("Press the same buttons again; RAW lines should NOT appear any more.")
 	waitEnter("Press Enter to start phase 2… ")
 	ev = phase(20, true)
 	summary(ev, "phase 2: blocked")

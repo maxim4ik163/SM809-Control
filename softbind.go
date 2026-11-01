@@ -31,25 +31,35 @@ const (
 	ModeSoftware = "software"
 )
 
-// carrierKey is what a software button sends: a key no ordinary keyboard
-// has. F13..F23 for buttons 1..11, F24 for button 13; buttons 14..16 use
-// rare browser keys of the HID consumer page (Windows turns them into
-// VK_BROWSER_SEARCH / FAVORITES / STOP), because the F keys run out.
+// carrierKey is what a software button sends: a keyboard key that ordinary
+// keyboards do not have. Buttons 1..11: F13..F23, button 13: F24. Buttons
+// 14..16: the Japanese keys International4 (Henkan), International5
+// (Muhenkan) and International1 (Ro) — the F keys run out. All of them are
+// real key presses from the mouse's keyboard collection, so without the app
+// they do nothing on non-Japanese input (the browser keys of 2.1.0 opened
+// search/favorites in the browser and arrived injected, see keyprobe logs).
+// Scan codes are layout independent, so the hook matches on them too.
 type carrierKey struct {
-	Code  [3]int // firmware action
-	VK    uint32 // what the keyboard hook sees
+	Code  [3]int // firmware action (112, mods, HID usage)
+	VK    uint32 // virtual key Windows reports (may vary with the layout)
+	Scan  uint32 // set-1 scan code (not extended)
 	Label string
 }
+
+// carrierTableVersion changes whenever a code below changes, so that the
+// mouse gets the new layout on the next start (2: buttons 14..16 moved from
+// browser keys to International keys).
+const carrierTableVersion = 2
 
 var carriers = func() [softSlots]carrierKey {
 	var c [softSlots]carrierKey
 	for i := 0; i < 11; i++ {
-		c[i] = carrierKey{[3]int{112, 0, 104 + i}, uint32(0x7C + i), fmt.Sprintf("F%d", 13+i)}
+		c[i] = carrierKey{[3]int{112, 0, 104 + i}, uint32(0x7C + i), uint32(0x64 + i), fmt.Sprintf("F%d", 13+i)} // confirmed by keyprobe
 	}
-	c[12] = carrierKey{[3]int{112, 0, 115}, 0x87, "F24"}
-	c[13] = carrierKey{[3]int{128, 0x21, 0x02}, 0xAA, "Browser Search"}    // AC Search 0x221
-	c[14] = carrierKey{[3]int{128, 0x2A, 0x02}, 0xAB, "Browser Favorites"} // AC Bookmarks 0x22A
-	c[15] = carrierKey{[3]int{128, 0x26, 0x02}, 0xA9, "Browser Stop"}      // AC Stop 0x226
+	c[12] = carrierKey{[3]int{112, 0, 0x73}, 0x87, 0x76, "F24"}
+	c[13] = carrierKey{[3]int{112, 0, 0x8A}, 0x1C, 0x79, "Henkan"}   // International4, VK_CONVERT
+	c[14] = carrierKey{[3]int{112, 0, 0x8B}, 0x1D, 0x7B, "Muhenkan"} // International5, VK_NONCONVERT
+	c[15] = carrierKey{[3]int{112, 0, 0x87}, 0xC1, 0x73, "Ro"}       // International1, VK_ABNT_C1
 	return c
 }()
 
@@ -74,33 +84,29 @@ const injectedMark = 0x534D3839 // "SM89"
 
 // What the keyboard hook does with an event.
 const (
-	hookIgnore        = iota // pass through untouched
-	hookKeyboard             // a real key press: carrier keys, capture, "until any key"
-	hookSystemCarrier        // a carrier key Windows injected on the mouse's behalf
+	hookIgnore   = iota // pass through untouched (injected input: ours or other programs')
+	hookKeyboard        // a real key press: carrier keys, capture, "until any key"
 )
 
-// hookEventKind sorts keyboard hook events. Real key presses are the
-// F-key carriers. The browser-key carriers (HID consumer page) are turned
-// into keystrokes by Windows itself, so they arrive *injected* (confirmed with
-// keyprobe: scan 00 E0, no device); they are accepted as long as they are
-// not ours (our own SendInput carries injectedMark).
+// hookEventKind sorts keyboard hook events: only real key presses matter.
 func hookEventKind(vk uint32, injected bool, extra uintptr) int {
-	if !injected {
-		return hookKeyboard
-	}
-	if extra == injectedMark {
+	if injected {
 		return hookIgnore
 	}
-	if i := carrierSlotOfVK(vk); i >= 0 && carriers[i].Code[0] == 128 {
-		return hookSystemCarrier
-	}
-	return hookIgnore
+	return hookKeyboard
 }
 
 // carrierSlotOfVK: the button whose carrier key is vk, otherwise -1.
-func carrierSlotOfVK(vk uint32) int {
+func carrierSlotOfVK(vk uint32) int { return carrierSlotOf(vk, 0, false) }
+
+// carrierSlotOf: the button whose carrier key this is (virtual key, or the
+// scan code when the layout reports another virtual key), otherwise -1.
+func carrierSlotOf(vk, scan uint32, ext bool) int {
 	for i, c := range carriers {
-		if i != lockedSlot && c.VK == vk {
+		if i == lockedSlot {
+			continue
+		}
+		if c.VK == vk || (scan != 0 && !ext && c.Scan == scan) {
 			return i
 		}
 	}
@@ -270,11 +276,7 @@ func carrierProfile(p *Profile, m [softSlots]bool) *Profile {
 	c := *p
 	for i := 0; i < softSlots; i++ {
 		if m[i] && i != lockedSlot {
-			kind := "key"
-			if carriers[i].Code[0] == 128 {
-				kind = "media"
-			}
-			c.Buttons[i] = ButtonAssign{Kind: kind, Code: carriers[i].Code, Label: carriers[i].Label}
+			c.Buttons[i] = ButtonAssign{Kind: "key", Code: carriers[i].Code, Label: carriers[i].Label}
 		}
 	}
 	return &c
