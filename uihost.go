@@ -38,6 +38,7 @@ func runUI(url string) {
 	defer w.Destroy()
 	darkTitleBar(uintptr(w.Window()))
 	w.SetSize(int(900*scale), int(620*scale), webview2.HintMin)
+	trackWindowState(uintptr(w.Window()), int32(900*scale), int32(620*scale))
 	// file picker for "start a program": the dialog runs on its own thread
 	// (a modal loop inside a WebView2 event handler is not allowed) and is
 	// owned by this window, so it opens on top of it.

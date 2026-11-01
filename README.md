@@ -37,6 +37,7 @@ An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gamin
 - **Connection diagnostics.** Settings → Mouse → *Connection diagnostics…* shows what Windows exposes and what the mouse answers; save it to a file for a bug report.
 - **Read settings from the mouse** (cable). Reads the mouse memory (read-only), compares it with the current profile and can turn it into a profile.
 - **Experimental:** key debounce threshold, a hidden firmware setting for switches that start to double-click.
+- **The window remembers its size, position and maximized state** between openings (close it to the tray and open it again).
 - **Tray icon** with battery level and quick profile switching, autostart, **backup** of profiles and macros or of all app data.
 - **English and Russian** UI.
 
@@ -133,7 +134,7 @@ The `build` workflow runs the tests, builds `SM809Control_vX.Y.Z.exe` and attach
 | `battery.go` | Battery history and forecast |
 | `api.go` | Local HTTP API (127.0.0.1, random port, token) + SSE for the UI |
 | `main.go`, `osd.go`, `icon.go` | Tray, on-screen popups, battery tray icon (Win32) |
-| `uihost.go` | WebView2 window process |
+| `uihost.go`, `winstate.go` | WebView2 window process; window size/position/maximized state (`window.json`) |
 | `web/` | UI |
 | `cmd/keyprobe/` | Small tool that logs the keys the mouse sends (used to verify carrier keys) |
 | `testdata/` | Key probe logs and connection diagnostics from real hardware |
@@ -178,6 +179,7 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md): status report, all commands, button co
 - **Диагностика подключения:** «Настройки → Мышь → Диагностика подключения…» показывает, что видит Windows и что отвечает мышь; можно сохранить в файл для отчёта об ошибке.
 - **Чтение настроек из мыши** (по кабелю): только чтение, сравнение с профилем, можно сделать из этого профиль.
 - **Экспериментальное:** антидребезг кнопок — скрытая настройка прошивки на случай даблкликов.
+- **Окно запоминает размер, положение и «развёрнуто во весь экран»** между открытиями (закрыли в трей — открылось таким же).
 - **Трей, автозапуск, резервная копия** профилей и макросов или всех данных.
 - **Русский и английский** интерфейс.
 
