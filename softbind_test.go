@@ -479,6 +479,9 @@ func TestCarrierSlotOf(t *testing.T) {
 		{0x1D, 0x7B, false, 14},
 		{0xC1, 0x73, false, 15},
 		{0xFF, 0x73, false, 15}, // Ro under a layout with another VK
+		{0xFF, 0x79, false, 13}, // seen on the user's PC: Henkan arrives as VK 0xFF (probe 3)
+		{0xEB, 0x7B, false, 14}, // and Muhenkan as VK 0xEB
+		{0xFF, 0x00, false, -1}, // VK 0xFF alone (unmapped keys) is never a carrier
 		{0x00, 0x79, false, 13},
 		{0x41, 0x1E, false, -1},
 		{0x2E, 0x53, true, -1}, // Delete (extended) is not a carrier

@@ -57,6 +57,8 @@ var carriers = func() [softSlots]carrierKey {
 		c[i] = carrierKey{[3]int{112, 0, 104 + i}, uint32(0x7C + i), uint32(0x64 + i), fmt.Sprintf("F%d", 13+i)} // confirmed by keyprobe
 	}
 	c[12] = carrierKey{[3]int{112, 0, 0x73}, 0x87, 0x76, "F24"}
+	// probe 3 (ru/en layouts): Henkan arrives as VK 0xFF, Muhenkan as VK 0xEB,
+	// Ro as VK_ABNT_C1 — so the scan code is what identifies them
 	c[13] = carrierKey{[3]int{112, 0, 0x8A}, 0x1C, 0x79, "Henkan"}   // International4, VK_CONVERT
 	c[14] = carrierKey{[3]int{112, 0, 0x8B}, 0x1D, 0x7B, "Muhenkan"} // International5, VK_NONCONVERT
 	c[15] = carrierKey{[3]int{112, 0, 0x87}, 0xC1, 0x73, "Ro"}       // International1, VK_ABNT_C1

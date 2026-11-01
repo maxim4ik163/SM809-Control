@@ -126,3 +126,9 @@ The separate "Soft buttons" tab of the betas is gone; it made it unclear which a
 - Browser keys (2.1.0/2.1.1 carriers of buttons 14–16): arrive injected with `dwExtraInfo` 0, **no auto-repeat**, and blocking them in the hook works (0 raw events) — **but without the app they act**: the middle button opened the browser's search bar. That breaks "software buttons do nothing without the app".
 - 2.1.2: buttons 14–16 use keyboard-page International4/5/1 (`112,0,0x8A/0x8B/0x87`, VK_CONVERT / VK_NONCONVERT / VK_ABNT_C1, scan 79/7B/73). Real key presses like the F-keys; no effect without a Japanese IME. The hook matches carriers by VK or (non-extended) scan code. `carrierTableVersion` 2 makes the app rewrite the key layout once on start when the mouse still has old codes. The hook ignores injected input again.
 - F24 (button 13) still untested. To confirm with keyprobe: buttons 13–16 software, app closed, Notepad/browser in front must show nothing.
+
+## Probe 3 (2026-11-02, dongle, 2.1.2 codes) — `testdata/keyprobe-2026-11-02-b.log`
+
+- Buttons 14–16 confirmed: International4 → scan 79, **VK 0xFF**; International5 → scan 7B, **VK 0xEB**; International1 → scan 73, VK 0xC1. All real key presses from `MI_01&COL01`, with typematic repeat (~505 ms, then 31–47 ms), fully blocked by the hook (0 raw events). Two of three VKs differ from the textbook values on this PC, so matching by scan code is required (it is the primary key; VK 0xFF alone never matches).
+- F13–F23 confirmed for the third time.
+- F24 (button 13) still absent: no key at all from the mouse for it — either button 13 was not a software button, or the firmware does not send usage 0x73.
