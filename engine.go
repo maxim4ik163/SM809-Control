@@ -173,8 +173,7 @@ func (e *Engine) handleReport(r statusReport) {
 	e.mu.Unlock()
 	if extNotify != "" && e.onNotify != nil {
 		e.onNotify(T("SM809: настройки мыши изменены?", "SM809: mouse settings changed?"),
-			T("Похоже, их поменяли в другой программе: ", "They seem to have been changed by another program: ")+extNotify+
-				T(". Могли измениться и кнопки — откройте SM809 Control.", ". Buttons may have changed too — open SM809 Control."), true)
+			T("Похоже, их поменяли в другой программе: ", "They seem to have been changed by another program: ")+extNotify, true)
 	}
 
 	if dpiPopup != nil && e.onOSD != nil {
