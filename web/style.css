@@ -246,3 +246,7 @@ tr.off td { opacity: .5; }
 .bitem.fw .l { color: var(--muted); font-style: italic; }
 button.chip { cursor: pointer; padding: 5px 12px; }
 button.chip.on { background: #1f2a22; color: var(--text); }
+input[type=password] { background: var(--panel2); border: 1px solid var(--line); border-radius: 7px; padding: 6px 9px; outline: none; }
+input[type=password]:focus, textarea:focus { border-color: var(--accent); }
+#sbed .grow { flex: 1; min-width: 0; }
+#sbed textarea { font-family: inherit; }

@@ -136,6 +136,7 @@ async function reload() {
   if (!setDirty) { setDraft = clone(S.data.settings); autostartDraft = S.autostart; }
   if (!softDirty) softDraft = clone(S.data.soft);
   if (!softKeys) softKeys = await api('soft/keys').catch(() => []);
+  if (!softLayouts.length) softLayouts = await api('soft/layouts').catch(() => []);
   renderAll();
 }
 
@@ -1305,7 +1306,7 @@ setInterval(() => { if (S) showLastMessage(); }, 700);
 // without writing the mouse.
 
 const SOFT_N = 11;
-let softDraft = null, softDirty = false, softScope = store.get('softScope', 'global'), softSel = 0, softKeys = null, softSig = '';
+let softDraft = null, softDirty = false, softScope = store.get('softScope', 'global'), softSel = 0, softKeys = null, softSig = '', softLayouts = [];
 const softSlot = i => 'b' + (i + 1);
 const SOFT_MOUSE = () => [['left', L('Левая кнопка', 'Left click')], ['right', L('Правая кнопка', 'Right click')],
   ['middle', L('Средняя кнопка', 'Middle click')], ['back', L('Назад', 'Back')], ['forward', L('Вперёд', 'Forward')]];
@@ -1323,6 +1324,9 @@ function softBindingText(b, i) {
     case 'keys': return b.keys;
     case 'mouse': return softMouseName(b.button);
     case 'disable': return L('ничего', 'nothing');
+    case 'macro': { const m = macroById(b.macroId); return L('Макрос: ', 'Macro: ') + (m ? m.name : L('(удалён)', '(deleted)')); }
+    case 'text': return L('Текст: ', 'Text: ') + (b.secret ? '••••••' : (b.text || '').replace(/\s+/g, ' ').slice(0, 24) + ((b.text || '').length > 24 ? '…' : ''));
+    case 'run': return L('Запуск: ', 'Start: ') + (b.path || '').split(/[\\/]/).pop();
   }
   return softDefaultText(i);
 }
@@ -1393,6 +1397,7 @@ function softStatusHTML() {
     `${L('активное окно', 'foreground')}: <b>${esc(s.exe || '—')}</b>`,
     `${L('привязки', 'bindings')}: <b>${esc(prof || L('общие', 'global'))}</b>`,
   ];
+  if (s.error) parts.push(`<span style="color:var(--warn)">⚠ ${esc(s.error)}</span>`);
   return parts.join(' &nbsp;·&nbsp; ');
 }
 
@@ -1502,7 +1507,8 @@ function softEditor(box, prof) {
   else h += `<p class="muted small">${L('Сейчас', 'Now')}: ${esc(SOFT_SRC()[e.src])}</p>`;
   const kinds = (prof ? [['', L('Как в общих', 'As in Global')]] : []).concat([
     ['default', L('Как в мыши', 'As in the mouse') + ' (' + softDefaultText(i) + ')'], ['keys', L('Клавиша / сочетание', 'Key / combination')],
-    ['mouse', L('Кнопка мыши', 'Mouse button')], ['disable', L('Ничего', 'Nothing')]]);
+    ['mouse', L('Кнопка мыши', 'Mouse button')], ['macro', L('Макрос', 'Macro')], ['text', L('Текст', 'Text')],
+    ['run', L('Запуск', 'Start')], ['disable', L('Ничего', 'Nothing')]]);
   const cur = b.kind || (prof ? '' : 'default');
   h += `<div class="cats">${kinds.map(([k, n]) => `<button data-kind="${k}" class="${k === cur ? 'on' : ''}">${esc(n)}</button>`).join('')}</div><div id="skb"></div>`;
   if (!prof) h += `<label class="check" style="margin-top:10px"><input type="checkbox" id="sforce" ${b.force ? 'checked' : ''} ${cur === 'default' && !b.force ? '' : ''}><span>${L('Главнее профилей программ', 'Wins over program profiles')}<small>${L('эта привязка действует во всех программах', 'this binding applies in every program')}</small></span></label>`;
@@ -1519,6 +1525,9 @@ function softEditor(box, prof) {
     if (k === cur) return;
     if (k === 'keys') return set({ kind: 'keys', keys: b.keys || '', force: b.force });
     if (k === 'mouse') return set({ kind: 'mouse', button: b.button || 'middle', force: b.force });
+    if (k === 'macro') { const ms = S.data.macros || []; return set({ kind: 'macro', macroId: (macroById(b.macroId) || ms[0] || {}).id || '', force: b.force }); }
+    if (k === 'text') return set({ kind: 'text', text: '', method: 'unicode', after: '', force: b.force });
+    if (k === 'run') return set({ kind: 'run', path: '', args: '', force: b.force });
     set({ kind: k, force: b.force });
   });
   const fc = box.querySelector('#sforce');
@@ -1530,6 +1539,82 @@ function softEditor(box, prof) {
     body.querySelectorAll('[data-mb]').forEach(el => el.onclick = () => set({ ...b, button: el.dataset.mb }));
   }
   if (cur === 'disable') body.innerHTML = `<p class="muted small">${L('Кнопка ничего не делает.', 'The button does nothing.')}</p>`;
+  if (cur === 'macro') softMacroEditor(body, b, set);
+  if (cur === 'text') softTextEditor(body, b, map, slot);
+  if (cur === 'run') softRunEditor(body, b, map, slot);
+}
+
+function softMacroEditor(body, b, set) {
+  const ms = S.data.macros || [];
+  const go = () => { tab = 'macros'; store.set('tab', tab); mEditId = 'new'; mDraft = newMacro(); mDirty = true; renderAll(); };
+  if (!ms.length) {
+    body.innerHTML = `<p class="muted">${L('Макросов пока нет.', 'No macros yet.')}</p><button class="primary" id="smgo">${L('Создать макрос', 'Create a macro')}</button>`;
+    body.querySelector('#smgo').onclick = go;
+    return;
+  }
+  body.innerHTML = `<div class="mlist">${ms.map(m => `<div class="it ${b.macroId === m.id ? 'on' : ''}" data-m="${m.id}">${esc(m.name)}<small>${m.events.length} ${L('действий', 'actions')} · ${execName(m.executeType)}${m.executeType === 2 ? ' (' + m.repeatCount + ')' : ''}</small></div>`).join('')}</div>
+    <p class="muted small">${L('Макрос проигрывает программа — те же макросы, что на вкладке «Макросы», и тот же режим повтора. Сдвиги курсора здесь выполняются. «До нажатия любой кнопки» останавливается любой клавишей клавиатуры, другой кнопкой мыши 1–11 или повторным нажатием этой.',
+      'The app plays the macro — the same macros as on the Macros tab, with the same repeat mode. Cursor moves are performed here. “Until any key is pressed” stops on any keyboard key, another mouse button 1–11, or this button again.')}</p>`;
+  body.querySelectorAll('[data-m]').forEach(el => el.onclick = () => set({ ...b, macroId: el.dataset.m }));
+}
+
+// Text fields update the draft directly (no re-render while typing).
+function softTextEditor(body, b, map, slot) {
+  const upd = patch => { map[slot] = { ...map[slot], ...patch }; softTouch(); };
+  const sealed = b.secret && b.enc && !b.text;
+  const afterOpts = [['', L('ничего', 'nothing')], ['Enter', 'Enter'], ['Tab', 'Tab'], ['Ctrl+Enter', 'Ctrl+Enter'], ['Shift+Enter', 'Shift+Enter'], ['NumEnter', 'Num Enter']];
+  if (b.after && !afterOpts.some(o => o[0] === b.after)) afterOpts.push([b.after, b.after]);
+  body.innerHTML = `
+    <label class="check"><input type="checkbox" id="stsec" ${b.secret ? 'checked' : ''}><span>${L('Пароль или секрет', 'Password or secret')}<small>${L('хранится зашифрованным и больше не показывается', 'stored encrypted and never shown again')}</small></span></label>
+    <div class="row">${b.secret
+      ? `<input type="password" id="sttext" class="grow" autocomplete="new-password" placeholder="${sealed ? L('сохранён — введите новый, чтобы заменить', 'stored — type a new one to replace it') : L('введите текст', 'enter the text')}">`
+      : `<textarea id="sttext" class="grow" rows="3" style="resize:vertical" placeholder="${L('текст; перевод строки = Enter', 'text; a line break = Enter')}">${esc(b.text || '')}</textarea>`}</div>
+    <div class="row"><span class="muted">${L('Ввод', 'Input')}:</span>
+      <label class="check"><input type="radio" name="stm" value="unicode" ${b.method !== 'keys' ? 'checked' : ''}>${L('символы (не зависит от раскладки)', 'characters (any layout)')}</label>
+      <label class="check"><input type="radio" name="stm" value="keys" ${b.method === 'keys' ? 'checked' : ''}>${L('нажатия клавиш', 'key presses')}</label>
+      ${b.method === 'keys' ? `<select id="stlay"><option value="">${L('в текущей раскладке окна', 'in the window’s current layout')}</option>${softLayouts.map(l => `<option value="${esc(l.id)}" ${l.id === b.layout ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}
+        ${b.layout && !softLayouts.some(l => l.id === b.layout) ? `<option value="${esc(b.layout)}" selected>${L('не установлена', 'not installed')} (${esc(b.layout)})</option>` : ''}</select>` : ''}</div>
+    <div class="row"><label class="field"><span>${L('Затем нажать', 'Then press')}</span><select id="staft">${afterOpts.map(([v, n]) => `<option value="${esc(v)}" ${(b.after || '') === v ? 'selected' : ''}>${esc(n)}</option>`).join('')}</select></label>
+      <label class="field"><span>${L('Пауза между символами, мс', 'Delay between characters, ms')}</span><input type="number" id="stdel" min="0" max="500" value="${b.charDelay || 0}" style="width:110px"></label></div>
+    <p class="muted small">${L('«Символы» вводят текст как есть в любой раскладке — подходит почти везде. Если программа их не принимает (некоторые игры, удалённый рабочий стол, защищённые поля пароля), выберите «нажатия клавиш» и раскладку: на время ввода окно переключится на неё, потом вернётся обратно; Caps Lock учитывается.',
+      '“Characters” types the text as is in any layout — works almost everywhere. If a program ignores them (some games, remote desktop, protected password fields), choose “key presses” and a layout: the window switches to it while typing and back afterwards; Caps Lock is handled.')}</p>
+    ${b.secret ? `<p class="small" style="color:var(--warn)">${L('Секрет шифруется средствами Windows (DPAPI) и расшифровывается только под вашей учётной записью на этом ПК — после переноса на другой компьютер его нужно ввести заново. Но его введёт любой, кто нажмёт кнопку, пока программа запущена: назначайте пароли в профиле нужной программы, а не в общих.',
+      'The secret is encrypted by Windows (DPAPI) and can be decrypted only by your account on this PC — after moving to another computer enter it again. But anyone pressing the button while the app runs will type it: bind passwords in the profile of that program, not in Global.')}</p>` : ''}`;
+  const ta = body.querySelector('#sttext');
+  ta.oninput = () => upd({ text: ta.value });
+  body.querySelector('#stsec').onchange = e => {
+    const on = e.target.checked;
+    map[slot] = { ...map[slot], secret: on };
+    if (!on && map[slot].enc && !map[slot].text) map[slot].enc = ''; // the stored secret is not shown: enter the text again
+    softTouch(); renderView();
+  };
+  body.querySelectorAll('[name=stm]').forEach(r => r.onchange = () => { upd({ method: r.value }); renderView(); });
+  const lay = body.querySelector('#stlay'); if (lay) lay.onchange = () => upd({ layout: lay.value });
+  body.querySelector('#staft').onchange = e => upd({ after: e.target.value });
+  body.querySelector('#stdel').onchange = e => upd({ charDelay: Math.max(0, Math.min(500, +e.target.value | 0)) });
+}
+
+let pickResolve = null;
+window.smPickResult = p => { if (pickResolve) { pickResolve(p); pickResolve = null; } };
+
+function softRunEditor(body, b, map, slot) {
+  const upd = patch => { map[slot] = { ...map[slot], ...patch }; softTouch(); };
+  const canPick = typeof window.smPickFile === 'function';
+  body.innerHTML = `<div class="row"><label class="field grow"><span>${L('Программа, ярлык, документ, папка или адрес сайта', 'Program, shortcut, document, folder or web address')}</span>
+      <input type="text" id="srpath" value="${esc(b.path || '')}" placeholder="C:\\Program Files\\…\\app.exe"></label>
+      ${canPick ? `<button id="srpick" style="align-self:flex-end">${L('Обзор…', 'Browse…')}</button>` : ''}</div>
+    <div class="row"><label class="field grow"><span>${L('Параметры (необязательно)', 'Arguments (optional)')}</span><input type="text" id="srargs" value="${esc(b.args || '')}"></label></div>
+    <p class="muted small">${L('Запускается при нажатии кнопки, с правами обычного пользователя. Переменные вида %USERPROFILE% раскрываются.', 'Started when the button is pressed, with normal user rights. Variables such as %USERPROFILE% are expanded.')}</p>`;
+  const path = body.querySelector('#srpath');
+  path.oninput = () => upd({ path: path.value });
+  body.querySelector('#srargs').oninput = e => upd({ args: e.target.value });
+  const pk = body.querySelector('#srpick');
+  if (pk) pk.onclick = async () => {
+    pk.disabled = true;
+    const p = await new Promise(res => { pickResolve = res; window.smPickFile(path.value); });
+    pk.disabled = false;
+    if (p) { path.value = p; upd({ path: p }); renderView(); }
+  };
 }
 
 const SOFT_MODS = ['Ctrl', 'Shift', 'Alt', 'Win'];

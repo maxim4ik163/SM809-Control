@@ -188,7 +188,7 @@ func TestResolveSoft(t *testing.T) {
 	}
 	mouseP := newProfile("m", 0)
 	out := func(prof *SoftProfile, i int) string {
-		o, ok := softOutput(sd, prof, mouseP, i)
+		o, ok := softOutput(sd, prof, mouseP, i, nil)
 		if !ok {
 			return "-"
 		}
@@ -274,5 +274,82 @@ func TestSoftSlots(t *testing.T) {
 	k, ok := keyByVK[0x7C]
 	if !ok || k.Name != "F13" {
 		t.Error("VK_F13")
+	}
+}
+
+func TestSoftActions(t *testing.T) {
+	ok := func(b SoftBinding) SoftBinding {
+		t.Helper()
+		sd := &SoftData{Global: map[string]SoftBinding{"b1": b}}
+		if err := validateSoftData(sd); err != nil {
+			t.Fatalf("%+v: %v", b, err)
+		}
+		return sd.Global["b1"]
+	}
+	bad := func(b SoftBinding) {
+		t.Helper()
+		if err := validateSoftData(&SoftData{Global: map[string]SoftBinding{"b1": b}}); err == nil {
+			t.Fatalf("%+v accepted", b)
+		}
+	}
+	b := ok(SoftBinding{Kind: SoftText, Text: "привет", After: "enter", CharDelay: 900, Keys: "X", Path: "y"})
+	if b.Method != TextUnicode || b.After != "Enter" || b.CharDelay != maxSoftCharDelay || b.Keys != "" || b.Path != "" {
+		t.Fatalf("text not normalised: %+v", b)
+	}
+	b = ok(SoftBinding{Kind: SoftText, Text: "x", Method: TextKeys, Layout: "4090409"})
+	if b.Layout != "4090409" {
+		t.Fatal("layout dropped")
+	}
+	if ok(SoftBinding{Kind: SoftText, Text: "x", Layout: "409"}).Layout != "" {
+		t.Fatal("layout kept for Unicode input")
+	}
+	bad(SoftBinding{Kind: SoftText})
+	bad(SoftBinding{Kind: SoftText, Text: "x", Method: "paste"})
+	bad(SoftBinding{Kind: SoftText, Text: "x", Method: TextKeys, Layout: "zz"})
+	bad(SoftBinding{Kind: SoftText, Text: "x", After: "Nope"})
+	bad(SoftBinding{Kind: SoftText, Text: strings.Repeat("a", maxSoftText+1)})
+	bad(SoftBinding{Kind: SoftText, Enc: "dpapi:xx"}) // secret switched off without a new text
+	ok(SoftBinding{Kind: SoftText, Enc: "dpapi:xx", Secret: true})
+	bad(SoftBinding{Kind: SoftMacro})
+	if ok(SoftBinding{Kind: SoftMacro, MacroID: "m1", Text: "t"}).Text != "" {
+		t.Fatal("stray field kept")
+	}
+	bad(SoftBinding{Kind: SoftRun, Path: "  "})
+	if p := ok(SoftBinding{Kind: SoftRun, Path: ` "C:\Tools\a.exe" `}).Path; p != `C:\Tools\a.exe` {
+		t.Fatalf("path %q", p)
+	}
+
+	// secrets are sealed; without encryption saving fails
+	sd := &SoftData{Global: map[string]SoftBinding{"b1": {Kind: SoftText, Text: "pw", Secret: true}}}
+	_ = validateSoftData(sd)
+	old := protectSecret
+	defer func() { protectSecret = old }()
+	protectSecret = nil
+	if sealSecrets(sd) == nil {
+		t.Fatal("sealed without encryption")
+	}
+	protectSecret = func(s string) (string, error) { return "enc:" + s, nil }
+	if err := sealSecrets(sd); err != nil || sd.Global["b1"].Text != "" || sd.Global["b1"].Enc != "enc:pw" {
+		t.Fatalf("seal: %v %+v", err, sd.Global["b1"])
+	}
+
+	// macros
+	sd = &SoftData{Profiles: []*SoftProfile{{Name: "G", Bindings: map[string]SoftBinding{"b2": {Kind: SoftMacro, MacroID: "m1"}}}}}
+	_ = validateSoftData(sd)
+	if softMacroUse(sd, "m1") == "" || softMacroUse(sd, "m2") != "" {
+		t.Fatal("softMacroUse")
+	}
+	m := &Macro{ID: "m1", Name: "M", ExecuteType: 3, Events: []MacroEvent{{Type: "keydown", Code: 4}, {Type: "keyup", Code: 4}}}
+	o, okk := softOutput(sd, sd.Profiles[0], nil, 1, func(id string) *Macro {
+		if id == "m1" {
+			return m
+		}
+		return nil
+	})
+	if !okk || o.Kind != SoftMacro || o.Macro == m || o.Macro.Name != "M" {
+		t.Fatal("macro output must be a copy")
+	}
+	if _, okk := softOutput(sd, sd.Profiles[0], nil, 1, func(string) *Macro { return nil }); okk {
+		t.Fatal("deleted macro played")
 	}
 }

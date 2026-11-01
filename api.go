@@ -287,7 +287,20 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		if err := validateSoftData(req.Soft); err != nil {
 			return nil, err
 		}
+		if err := sealSecrets(req.Soft); err != nil {
+			return nil, err
+		}
 		st.mu.Lock()
+		var missing error
+		forEachSoftBinding(req.Soft, func(where, slot string, b *SoftBinding) {
+			if missing == nil && b.Kind == SoftMacro && st.macro(b.MacroID) == nil {
+				missing = fmt.Errorf(T("%s, %s: макрос удалён", "%s, %s: the macro was deleted"), where, softSlotLabel(slot))
+			}
+		})
+		if missing != nil {
+			st.mu.Unlock()
+			return nil, missing
+		}
 		st.data.Soft = req.Soft
 		err := st.saveData()
 		st.mu.Unlock()
@@ -323,6 +336,12 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 			return map[string]any{"ok": false, "error": err.Error()}, nil
 		}
 		return map[string]any{"ok": true}, nil
+
+	case "soft/layouts":
+		if a.soft == nil {
+			return []keyboardLayout{}, nil
+		}
+		return a.soft.layouts(), nil
 
 	case "soft/capture":
 		if a.soft == nil {
@@ -488,6 +507,9 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 					return nil, fmt.Errorf(T("макрос назначен на кнопку %d в профиле «%s»", "the macro is assigned to button %d in profile “%s”"), i+1, p.Name)
 				}
 			}
+		}
+		if use := softMacroUse(st.data.Soft, req.ID); use != "" {
+			return nil, fmt.Errorf(T("макрос назначен программной кнопке (%s)", "the macro is used by a soft button (%s)"), use)
 		}
 		var keep []*Macro
 		for _, m := range st.data.Macros {

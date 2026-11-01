@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -447,5 +448,44 @@ func TestSoftBindings(t *testing.T) {
 	waitIdle(e)
 	if cmds(takeSent()) != "1,1" || st.state.Carrier != want {
 		t.Fatal("pending carrier write")
+	}
+}
+
+func TestSoftActionsAPI(t *testing.T) {
+	st, e := setup(t)
+	a, _ := newAPI(e, st, func(f func()) { f() })
+	protectSecret = func(s string) (string, error) { return "enc:" + s, nil }
+	defer func() { protectSecret = nil }()
+	c, m := post(t, a, "macro/save", Macro{Name: "a", ExecuteType: 1, Events: []MacroEvent{{Type: "keydown", Code: 4}, {Type: "keyup", Code: 4}}})
+	if c != 200 {
+		t.Fatal(m)
+	}
+	mid := m["id"].(string)
+	sd := defaultSoftData()
+	sd.Global["b1"] = SoftBinding{Kind: SoftMacro, MacroID: "nope"}
+	if c, _ := post(t, a, "soft/save", map[string]any{"soft": sd}); c != 400 {
+		t.Fatal("unknown macro accepted")
+	}
+	sd.Global["b1"] = SoftBinding{Kind: SoftMacro, MacroID: mid}
+	sd.Global["b2"] = SoftBinding{Kind: SoftText, Text: "s3cret", Secret: true, After: "Enter"}
+	sd.Global["b3"] = SoftBinding{Kind: SoftRun, Path: `%WINDIR%\notepad.exe`}
+	if c, m := post(t, a, "soft/save", map[string]any{"soft": sd}); c != 200 {
+		t.Fatal(m)
+	}
+	b := st.data.Soft.Global["b2"]
+	if b.Text != "" || b.Enc != "enc:s3cret" {
+		t.Fatalf("secret stored as %+v", b)
+	}
+	// the UI gets the data back without the plain text
+	_, all := post(t, a, "all", nil)
+	if strings.Contains(fmt.Sprint(all), "s3cret\"") || strings.Contains(fmt.Sprint(all["data"].(map[string]any)["soft"]), "text:s3cret") {
+		t.Fatal("secret leaked to the UI")
+	}
+	// saving again unchanged keeps the sealed secret
+	if c, m := post(t, a, "soft/save", map[string]any{"soft": st.data.Soft}); c != 200 || st.data.Soft.Global["b2"].Enc != "enc:s3cret" {
+		t.Fatal(m)
+	}
+	if c, _ := post(t, a, "macro/delete", map[string]string{"id": mid}); c != 400 {
+		t.Fatal("macro used by a soft button deleted")
 	}
 }

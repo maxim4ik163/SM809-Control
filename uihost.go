@@ -3,6 +3,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -37,6 +38,17 @@ func runUI(url string) {
 	defer w.Destroy()
 	darkTitleBar(uintptr(w.Window()))
 	w.SetSize(int(900*scale), int(620*scale), webview2.HintMin)
+	// file picker for "start a program": the dialog runs on its own thread
+	// (a modal loop inside a WebView2 event handler is not allowed) and is
+	// owned by this window, so it opens on top of it.
+	_ = w.Bind("smPickFile", func(start string) bool {
+		go func() {
+			p := pickFile(uintptr(w.Window()), start)
+			b, _ := json.Marshal(p)
+			w.Dispatch(func() { w.Eval("window.smPickResult && window.smPickResult(" + string(b) + ")") })
+		}()
+		return true
+	})
 	w.Navigate(url)
 	w.Run()
 }

@@ -213,6 +213,7 @@ type softEvent struct {
 type softHeld struct {
 	out SoftOut
 	rep *repeater
+	run *macroRun // a macro started by this press
 }
 
 type softRuntime struct {
@@ -242,14 +243,19 @@ type softRuntime struct {
 	fgExe   string
 	profile string // active soft profile id
 	held    map[int]*softHeld
+	macros  map[int]*macroRun // macros started per button (still running or finished)
 	last    string
-	ensured bool // carrier checked after the first link this session
+	lastErr string
+	errAt   time.Time
+
+	untilAny atomic.Int32 // running "until any key" macros (read by the hook)
+	ensured  bool         // carrier checked after the first link this session
 }
 
 func newSoftRuntime(st *Store, e *Engine, onOSD func(osdContent)) *softRuntime {
 	exe, _ := os.Executable()
 	r := &softRuntime{store: st, eng: e, onOSD: onOSD, events: make(chan softEvent, 64),
-		capBlocked: map[uint32]bool{}, held: map[int]*softHeld{}, ownExe: normalizeExe(filepath.Base(exe))}
+		capBlocked: map[uint32]bool{}, held: map[int]*softHeld{}, macros: map[int]*macroRun{}, ownExe: normalizeExe(filepath.Base(exe))}
 	st.mu.Lock()
 	r.mask.Store(maskBits(st.state.Carrier))
 	st.mu.Unlock()
@@ -380,6 +386,9 @@ func (r *softRuntime) decide(k *KBDLLHOOKSTRUCT) bool {
 	}
 	i := carrierSlotOfVK(k.VkCode)
 	if i < 0 {
+		if !up && r.untilAny.Load() > 0 {
+			r.queue(softEvent{slot: -1, down: true}) // stops "until any key" macros
+		}
 		return false
 	}
 	if up {
@@ -416,6 +425,10 @@ func (r *softRuntime) handle(ev softEvent) {
 	defer r.wake() // after the unlock below (deferred calls run in reverse)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if ev.slot < 0 { // a keyboard key
+		r.stopUntilAny(-1)
+		return
+	}
 	if !ev.down {
 		h := r.held[ev.slot]
 		if h == nil {
@@ -424,6 +437,9 @@ func (r *softRuntime) handle(ev softEvent) {
 		delete(r.held, ev.slot)
 		if h.rep != nil {
 			h.rep.halt()
+		}
+		if h.run != nil && h.run.mode == 1 {
+			h.run.halt() // "while held"
 		}
 		switch h.out.Kind {
 		case SoftKeys:
@@ -436,12 +452,22 @@ func (r *softRuntime) handle(ev softEvent) {
 	if r.held[ev.slot] != nil {
 		return
 	}
+	// any button press stops "until any key" macros; pressing their own
+	// button again only stops them (a toggle)
+	if r.stopUntilAny(ev.slot) {
+		r.held[ev.slot] = &softHeld{out: SoftOut{Kind: SoftDisable}}
+		return
+	}
+	if run := r.macros[ev.slot]; run != nil && run.running() {
+		r.held[ev.slot] = &softHeld{out: SoftOut{Kind: SoftDisable}} // "N times" still running
+		return
+	}
 	onMouse := r.eng.OnMouse()
 	st := r.store
 	st.mu.Lock()
 	sd := st.data.Soft
 	sp := activeSoftProfile(sd, r.fgExe)
-	out, ok := softOutput(sd, sp, st.profile(onMouse), ev.slot)
+	out, ok := softOutput(sd, sp, st.profile(onMouse), ev.slot, st.macro)
 	repeat := sd.KeyRepeat
 	st.mu.Unlock()
 	r.last = softSlotName(ev.slot)
@@ -459,23 +485,69 @@ func (r *softRuntime) handle(ev softEvent) {
 		}
 	case SoftMouse:
 		sendMouseButton(out.Button, false)
+	case SoftMacro:
+		run := &macroRun{slot: ev.slot, mode: out.Macro.ExecuteType, stop: make(chan struct{}), done: make(chan struct{})}
+		if run.mode < 1 || run.mode > 3 {
+			run.mode = 2
+		}
+		if run.mode == 3 {
+			r.untilAny.Add(1)
+			go func() { <-run.done; r.untilAny.Add(-1) }()
+		}
+		r.macros[ev.slot] = run
+		h.run = run
+		go playMacro(out.Macro, run)
+	case SoftText:
+		go r.typeText(out.B)
+	case SoftRun:
+		go r.runProgram(out.B)
 	}
 	r.held[ev.slot] = h
 	if logEnabled {
 		what := out.Kind
-		if out.Kind == SoftKeys {
+		switch out.Kind {
+		case SoftKeys:
 			what = out.Combo.String()
-		} else if out.Kind == SoftMouse {
+		case SoftMouse:
 			what = "mouse " + out.Button
+		case SoftMacro:
+			what = "macro " + out.Macro.Name
+		case SoftRun:
+			what = "run " + out.B.Path
 		}
 		logf("кнопка %d → %s (%s)", ev.slot+1, what, r.fgExe)
 	}
+}
+
+// stopUntilAny stops running "until any key" macros; true if one of them was
+// started by slot. r.mu held.
+func (r *softRuntime) stopUntilAny(slot int) bool {
+	own := false
+	for s, run := range r.macros {
+		if run.mode == 3 && run.running() {
+			run.halt()
+			if s == slot {
+				own = true
+			}
+		}
+	}
+	return own
+}
+
+func (r *softRuntime) setError(s string) {
+	r.mu.Lock()
+	r.lastErr, r.errAt = s, time.Now()
+	r.mu.Unlock()
+	r.wake()
 }
 
 // releaseAll lets go of everything (exit).
 func (r *softRuntime) releaseAll() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	for _, run := range r.macros {
+		run.halt()
+	}
 	for slot, h := range r.held {
 		if h.rep != nil {
 			h.rep.halt()
@@ -597,6 +669,9 @@ func (r *softRuntime) status() SoftStatus {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	s := SoftStatus{Hook: r.alive.Load(), Exe: r.fgExe, Profile: r.profile, Last: r.last, Held: []string{}}
+	if r.lastErr != "" && time.Since(r.errAt) < time.Minute {
+		s.Error = r.lastErr
+	}
 	for slot := range r.held {
 		s.Held = append(s.Held, softSlotName(slot))
 	}

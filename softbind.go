@@ -59,14 +59,45 @@ const (
 	SoftKeys    = "keys"    // a key or a combination, held while the button is held
 	SoftMouse   = "mouse"   // a mouse button, held while the button is held
 	SoftDisable = "disable" // nothing
+	SoftMacro   = "macro"   // a macro from the Macros tab, played by the app
+	SoftText    = "text"    // type a text (optionally a protected secret), then a key
+	SoftRun     = "run"     // start a program, open a document, folder or URL
+)
+
+// Ways of typing a text.
+const (
+	TextUnicode = "unicode" // characters as Unicode input: independent of the keyboard layout
+	TextKeys    = "keys"    // real key presses in a given layout (for apps that ignore Unicode input)
+)
+
+const (
+	maxSoftText      = 2000 // characters
+	maxSoftCharDelay = 500  // ms
 )
 
 var softMouseButtons = []string{"left", "right", "middle", "back", "forward"}
 
 type SoftBinding struct {
-	Kind   string `json:"kind"`
-	Keys   string `json:"keys,omitempty"`   // "Ctrl+Win+Right"
-	Button string `json:"button,omitempty"` // left, right, middle, back, forward
+	Kind    string `json:"kind"`
+	Keys    string `json:"keys,omitempty"`    // "Ctrl+Win+Right"
+	Button  string `json:"button,omitempty"`  // left, right, middle, back, forward
+	MacroID string `json:"macroId,omitempty"` // SoftMacro
+
+	// SoftText. A secret is kept only encrypted for the current Windows user
+	// (Enc, DPAPI) and never sent back as plain text; Text then carries a new
+	// value from the UI only.
+	Text      string `json:"text,omitempty"`
+	Enc       string `json:"enc,omitempty"`
+	Secret    bool   `json:"secret,omitempty"`
+	Method    string `json:"method,omitempty"`    // TextUnicode or TextKeys
+	Layout    string `json:"layout,omitempty"`    // TextKeys: keyboard layout (HKL, hex); "" = the window's current one
+	After     string `json:"after,omitempty"`     // key combination pressed after the text, e.g. "Enter"
+	CharDelay int    `json:"charDelay,omitempty"` // ms between characters
+
+	// SoftRun
+	Path string `json:"path,omitempty"`
+	Args string `json:"args,omitempty"`
+
 	// Force (global bindings only): wins over any program profile.
 	Force bool `json:"force,omitempty"`
 }
@@ -102,9 +133,11 @@ func defaultSoftData() *SoftData {
 
 // SoftOut is a concrete action the app performs.
 type SoftOut struct {
-	Kind   string // SoftKeys, SoftMouse or SoftDisable
+	Kind   string // SoftKeys, SoftMouse, SoftDisable, SoftMacro, SoftText or SoftRun
 	Combo  Combo
 	Button string
+	Macro  *Macro      // SoftMacro (a copy)
+	B      SoftBinding // SoftText, SoftRun: the binding itself
 }
 
 var fwMouseButton = map[int]string{2: "right", 4: "middle", 8: "back", 16: "forward"}
@@ -192,13 +225,20 @@ type SoftStatus struct {
 	Profile   string          `json:"profile"`   // id of the active soft profile ("" = global only)
 	Held      []string        `json:"held"`      // slots currently held (live feedback)
 	Last      string          `json:"last"`      // last handled slot
+	Error     string          `json:"error"`     // last action error (shown for a minute)
 }
 
 // softHost is the platform part (keyboard hook, SendInput, foreground).
 type softHost interface {
 	status() SoftStatus
 	capture(timeout time.Duration) (string, error)
-	changed() // settings, profiles or carrier changed
+	changed()                  // settings, profiles or carrier changed
+	layouts() []keyboardLayout // installed keyboard layouts
+}
+
+type keyboardLayout struct {
+	ID   string `json:"id"`   // HKL, hex
+	Name string `json:"name"` // language name
 }
 
 // ---------------------------------------------------------------------------
@@ -243,9 +283,22 @@ func resolveSoft(sd *SoftData, p *SoftProfile, slot string) (SoftBinding, string
 
 // softOutput is what button i does right now. mouseP is the profile on the
 // mouse (its assignment is the default action). ok = false: do nothing.
-func softOutput(sd *SoftData, p *SoftProfile, mouseP *Profile, i int) (SoftOut, bool) {
+func softOutput(sd *SoftData, p *SoftProfile, mouseP *Profile, i int, macroOf func(string) *Macro) (SoftOut, bool) {
 	b, _ := resolveSoft(sd, p, softSlotName(i))
 	switch b.Kind {
+	case SoftMacro:
+		if macroOf == nil {
+			return SoftOut{}, false
+		}
+		m := macroOf(b.MacroID)
+		if m == nil || len(m.Events) == 0 {
+			return SoftOut{}, false
+		}
+		c := *m
+		c.Events = append([]MacroEvent(nil), m.Events...)
+		return SoftOut{Kind: SoftMacro, Macro: &c}, true
+	case SoftText, SoftRun:
+		return SoftOut{Kind: b.Kind, B: b}, true
 	case SoftKeys:
 		c, err := parseCombo(b.Keys)
 		if err != nil {
@@ -261,6 +314,62 @@ func softOutput(sd *SoftData, p *SoftProfile, mouseP *Profile, i int) (SoftOut, 
 		return SoftOut{}, false
 	}
 	return fwOutput(mouseP.Buttons[i])
+}
+
+// ---------------------------------------------------------------------------
+// Secrets and macro references
+
+// protectSecret / unprotectSecret encrypt a text for the current Windows user
+// (DPAPI). Set on Windows; nil elsewhere.
+var (
+	protectSecret   func(string) (string, error)
+	unprotectSecret func(string) (string, error)
+)
+
+// forEachSoftBinding calls f for every binding (global and per profile).
+func forEachSoftBinding(sd *SoftData, f func(where, slot string, b *SoftBinding)) {
+	for slot, b := range sd.Global {
+		f(T("общие", "global"), slot, &b)
+		sd.Global[slot] = b
+	}
+	for _, p := range sd.Profiles {
+		for slot, b := range p.Bindings {
+			f(p.Name, slot, &b)
+			p.Bindings[slot] = b
+		}
+	}
+}
+
+// sealSecrets moves new secret texts into Enc. Call after validateSoftData.
+func sealSecrets(sd *SoftData) error {
+	var err error
+	forEachSoftBinding(sd, func(where, slot string, b *SoftBinding) {
+		if err != nil || b.Kind != SoftText || !b.Secret || b.Text == "" {
+			return
+		}
+		if protectSecret == nil {
+			err = errors.New(T("шифрование недоступно", "encryption is not available"))
+			return
+		}
+		enc, e := protectSecret(b.Text)
+		if e != nil {
+			err = fmt.Errorf("%s, %s: %v", where, softSlotLabel(slot), e)
+			return
+		}
+		b.Enc, b.Text = enc, ""
+	})
+	return err
+}
+
+// softMacroUse: where a macro is used by a soft binding ("" = nowhere).
+func softMacroUse(sd *SoftData, id string) string {
+	use := ""
+	forEachSoftBinding(sd, func(where, slot string, b *SoftBinding) {
+		if use == "" && b.Kind == SoftMacro && b.MacroID == id {
+			use = where + ", " + softSlotLabel(slot)
+		}
+	})
+	return use
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +401,58 @@ func validateSoftBinding(slot string, b *SoftBinding, global bool) error {
 		if !validSoftMouseButton(b.Button) {
 			return fmt.Errorf(T("%s: неизвестная кнопка мыши %q", "%s: unknown mouse button %q"), softSlotLabel(slot), b.Button)
 		}
+	case SoftMacro:
+		if b.MacroID == "" {
+			return fmt.Errorf(T("%s: макрос не выбран", "%s: no macro selected"), softSlotLabel(slot))
+		}
+	case SoftText:
+		if b.Text == "" && b.Enc == "" {
+			return fmt.Errorf(T("%s: текст не задан", "%s: no text"), softSlotLabel(slot))
+		}
+		if len([]rune(b.Text)) > maxSoftText {
+			return fmt.Errorf(T("%s: текст длиннее %d символов", "%s: the text is longer than %d characters"), softSlotLabel(slot), maxSoftText)
+		}
+		switch b.Method {
+		case "":
+			b.Method = TextUnicode
+		case TextUnicode, TextKeys:
+		default:
+			return fmt.Errorf(T("%s: неизвестный способ ввода %q", "%s: unknown input method %q"), softSlotLabel(slot), b.Method)
+		}
+		if b.Method != TextKeys {
+			b.Layout = ""
+		} else if b.Layout != "" {
+			if _, err := strconv.ParseUint(b.Layout, 16, 64); err != nil || len(b.Layout) > 16 {
+				return fmt.Errorf(T("%s: неверная раскладка %q", "%s: invalid layout %q"), softSlotLabel(slot), b.Layout)
+			}
+		}
+		if strings.TrimSpace(b.After) != "" {
+			c, err := parseCombo(b.After)
+			if err != nil {
+				return fmt.Errorf(T("%s: клавиша после текста: %v", "%s: key after the text: %v"), softSlotLabel(slot), err)
+			}
+			b.After = c.String()
+		} else {
+			b.After = ""
+		}
+		if b.CharDelay < 0 {
+			b.CharDelay = 0
+		}
+		if b.CharDelay > maxSoftCharDelay {
+			b.CharDelay = maxSoftCharDelay
+		}
+		if !b.Secret && b.Text == "" { // a secret was turned off without a new text
+			return fmt.Errorf(T("%s: введите текст заново — сохранённый секрет не показывается", "%s: enter the text again — a stored secret is never shown"), softSlotLabel(slot))
+		}
+		if !b.Secret {
+			b.Enc = ""
+		}
+	case SoftRun:
+		b.Path = strings.Trim(strings.TrimSpace(b.Path), `"`)
+		b.Args = strings.TrimSpace(b.Args)
+		if b.Path == "" {
+			return fmt.Errorf(T("%s: не указано, что запускать", "%s: nothing to start"), softSlotLabel(slot))
+		}
 	default:
 		return fmt.Errorf(T("%s: неизвестное действие %q", "%s: unknown action %q"), softSlotLabel(slot), b.Kind)
 	}
@@ -300,6 +461,15 @@ func validateSoftBinding(slot string, b *SoftBinding, global bool) error {
 	}
 	if b.Kind != SoftMouse {
 		b.Button = ""
+	}
+	if b.Kind != SoftMacro {
+		b.MacroID = ""
+	}
+	if b.Kind != SoftText {
+		b.Text, b.Enc, b.Secret, b.Method, b.Layout, b.After, b.CharDelay = "", "", false, "", "", "", 0
+	}
+	if b.Kind != SoftRun {
+		b.Path, b.Args = "", ""
 	}
 	if !global {
 		b.Force = false

@@ -82,4 +82,12 @@ Decisions made while implementing:
 
 Still to verify on the real mouse (run `keyprobe.exe` first): VK 0x7C–0x86 / scan codes and auto-repeat over cable, 2.4G and Bluetooth; that a blocked carrier key reaches nothing; which physical button is which slot (the soft tab lights up the pressed button).
 
-Not done yet: software macros, running elevated (UIPI), a tray-menu entry.
+### Actions (1.5.0-beta2)
+
+Besides keys, mouse buttons and "nothing" a soft button can:
+
+- **Macro** — a macro from the Macros tab played by the app (`playMacro`), same repeat modes: while held / N times / until any key. "Until any key" stops on any keyboard key (non-injected, seen by the hook), any other carried button, or the same button again (a toggle; that press is consumed). Cursor moves are performed (`MOUSEEVENTF_MOVE`, subject to pointer acceleration). Keys and buttons left down by an interrupted macro are released. A macro used by a soft button cannot be deleted.
+- **Text** — `unicode` (KEYEVENTF_UNICODE, layout independent) or `keys` (VkKeyScanEx in a chosen installed layout; the foreground window is switched with WM_INPUTLANGCHANGEREQUEST before typing and switched back 250 ms after the last key, because posted messages overtake keyboard input; Caps Lock is turned off while typing). Characters missing on the layout fall back to Unicode. Line break = Enter, tab = Tab. Optional key after the text (Enter, Tab, Ctrl+Enter…), optional delay between characters. **Secrets** are sealed with DPAPI (current user, this PC) on save: `enc` = `dpapi:` + base64, the plain text is never stored or sent back to the UI; after a backup is moved to another PC/user the secret must be entered again (the status line says so).
+- **Start** — ShellExecute "open": a program, shortcut, document, folder or URL, with arguments; `%VAR%` expanded; normal user rights. The file picker runs in the settings window process on its own thread (a modal loop inside a WebView2 event handler is not allowed) and returns through `window.smPickResult`.
+
+Not done yet: running elevated (UIPI), a tray-menu entry. Macros still use the Macros tab editor, so its firmware limits (size, 4095 ms delays) apply to soft macros too.
