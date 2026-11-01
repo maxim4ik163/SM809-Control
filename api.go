@@ -333,6 +333,7 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		if err := dec(&req); err != nil {
 			return nil, err
 		}
+		req.HW[lockedSlot] = true // the main left button is always a hardware button
 		onMouse := a.eng.OnMouse()
 		st.mu.Lock()
 		next := st.data.Settings

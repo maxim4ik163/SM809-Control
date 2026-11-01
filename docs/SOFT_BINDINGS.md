@@ -104,3 +104,10 @@ The separate "Soft buttons" tab of the betas is gone; it made it unclear which a
 - Guard: the layout written to the mouse must keep a hardware left click (`deviceHasLeft`) — checked on profile save, mode switch and the hardware-button change.
 - Migration (`dataVersion` 2): 1.x data → mode not chosen, key repeat on. 1.5 beta data → global bindings into every profile, beta program profiles into new profiles + rules, the set of software buttons as on the mouse, `KeyRepeat`/`RestoreOnExit` into Settings.
 - Without the app, software buttons do nothing ("restore on exit" writes the hardware layout).
+
+## 2.1: every button but the left click
+
+- `softSlots` = 16; button 12 (`lockedSlot`, the main left click) is always a hardware button (forced in `/api/buttons/hw` and on load).
+- Carrier keys (`carriers` table): buttons 1–11 → F13–F23 (`112,0,104..114`), button 13 → F24 (`112,0,115`, VK 0x87), buttons 14–16 → HID consumer AC Search `0x221`, AC Bookmarks `0x22A`, AC Stop `0x226` (`128,lo,hi`; Windows maps them to VK_BROWSER_SEARCH 0xAA, VK_BROWSER_FAVORITES 0xAB, VK_BROWSER_STOP 0xA9). F24 and the browser keys need confirming with `keyprobe` (it logs them too). A real keyboard's browser Search/Favorites/Stop key is swallowed while that button is a software button.
+- Buttons 12–16 start as hardware buttons (`defaultHW`); `dataVersion` 3 marks them hardware in older data.
+- UI: the button list is laid out like the mouse — side panel 1–9 (1 long on top, 4 and 9 tall on the right) and the top 10–16 (12 and 13 tall); a green number = software button, red = hardware.

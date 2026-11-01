@@ -435,22 +435,26 @@ function setButton(i, a) {
 function viewButtons(v) {
   const sw = isSoftMode(), held = softStat().held || [];
   let hs = '', list = '';
+  const items = [];
   BUTTON_POS.forEach(([x, y], i) => {
     const soft = isSoftBtn(i);
     hs += `<div class="hot ${i === selBtn ? 'sel' : ''} ${i === LOCKED_BUTTON ? 'locked' : ''} ${soft ? 'soft' : ''} ${held.includes('b' + (i + 1)) ? 'held' : ''}" style="left:${x}px;top:${y}px" data-b="${i}" title="${L('Кнопка', 'Button')} ${i + 1}: ${esc(btnLabel(i))}"></div>`;
-    const badge = i === LOCKED_BUTTON ? '🔒' : sw ? (soft ? L('прог.', 'soft') : L('аппар.', 'hw')) : '';
-    list += `<div class="bitem ${i === selBtn ? 'sel' : ''} ${soft ? 'soft' : ''}" data-b="${i}"><span class="n">${i + 1}</span><span class="l">${esc(btnLabel(i))}</span>${badge ? `<span class="k">${badge}</span>` : ''}</div>`;
+    const badge = i === LOCKED_BUTTON ? '🔒' : '';
+    items[i] = `<div class="bitem ${i === selBtn ? 'sel' : ''} ${soft ? 'soft' : ''}" data-b="${i}" style="grid-area:b${i + 1}" title="${esc(btnLabel(i))}${sw ? ' — ' + (soft ? L('программная', 'software') : L('аппаратная', 'hardware')) : ''}"><span class="n">${i + 1}</span><span class="l">${esc(btnLabel(i))}</span>${badge ? `<span class="k">${badge}</span>` : ''}</div>`;
   });
+  // laid out like the buttons on the mouse: the side panel 1–9, the top 10–16
+  list = `<h3 class="bgh">${L('Боковые кнопки', 'Side buttons')}</h3><div class="bgrid side">${items.slice(0, 9).join('')}</div>
+    <h3 class="bgh">${L('Верх мыши', 'Top of the mouse')}</h3><div class="bgrid top">${items.slice(9).join('')}</div>`;
   const help = sw
-    ? L('Зелёные — программные кнопки: их выполняет SM809 Control по профилю активной программы, без записи в мышь. «аппар.» — аппаратные: действие хранится в мыши. Тип кнопки меняется галочкой в её настройке.<br>Нажмите кнопку на мыши — программная подсветится здесь.',
-      'Green ones are software buttons: SM809 Control performs them by the profile of the program in front, without writing the mouse. “hw” are hardware buttons: the action is stored in the mouse. Change the type with the checkbox in the button settings.<br>Press a button on the mouse — a software one lights up here.')
+    ? L('<span class="numk soft">●</span> зелёный номер — программная кнопка: её выполняет SM809 Control по профилю активной программы, без записи в мышь.<br><span class="numk">●</span> красный — аппаратная: действие хранится в мыши. Тип меняется галочкой в настройке кнопки (кроме основной левой).<br>Нажмите кнопку на мыши — программная подсветится здесь.',
+      '<span class="numk soft">●</span> a green number is a software button: SM809 Control performs it by the profile of the program in front, without writing the mouse.<br><span class="numk">●</span> red is a hardware button: the action is stored in the mouse. Change the type with the checkbox in the button settings (all but the main left button).<br>Press a button on the mouse — a software one lights up here.')
     : L('Нажмите на номер на картинке или в списке, чтобы назначить функцию.<br>Кнопка 12 — основная левая, она заблокирована, чтобы мышью всегда можно было кликнуть.',
       'Click a number on the picture or in the list to assign a function.<br>Button 12 is the main left button; it is locked so the mouse can always click.');
   v.innerHTML = (sw ? `<div class="card slim small" id="btnStat">${buttonsStatusHTML()}</div>` : '') + `<div class="btnlayout">
     <div><div class="mouse"><img src="mouse.png" alt="">${hs}</div>
       <p class="muted small">${help}</p>
       <p class="small">${L('Режим кнопок', 'Button mode')}: <b>${modeTitle(S.data.settings.buttonMode)}</b> · <a href="#" id="chMode">${L('изменить', 'change')}</a></p></div>
-    <div><div class="card"><div class="blist">${list}</div></div><div class="card" id="bed"></div></div></div>`;
+    <div><div class="card">${list}</div><div class="card" id="bed"></div></div></div>`;
   v.querySelectorAll('[data-b]').forEach(el => el.onclick = () => {
     selBtn = +el.dataset.b; btnCat = catOf(draft.buttons[selBtn]); renderView();
   });
@@ -466,13 +470,11 @@ function renderButtonEditor(box) {
       'This is the main left button. Its function cannot be changed, so the mouse can never be left without a working click.')}</p>`;
     return;
   }
-  if (isSoftMode() && i < SOFT_N) {
+  if (isSoftMode()) {
     const hw = S.data.settings.hwButtons[i];
     title += `<label class="check hwtoggle"><input type="checkbox" id="hwchk" ${hw ? 'checked' : ''}><span>${L('Аппаратная кнопка', 'Hardware button')}<small>${hw
       ? L('действие хранится в мыши и работает без программы; можно назначить огонь, DPI, макрос прошивки', 'the action is stored in the mouse and works without the app; rapid fire, DPI and firmware macros are available')
       : L('действие выполняет SM809 Control по профилю активной программы; без программы кнопка ничего не делает', 'SM809 Control performs the action by the profile of the program in front; without the app the button does nothing')}</small></span></label>`;
-  } else if (isSoftMode()) {
-    title += `<p class="muted small">${L('Кнопки 12–16 всегда аппаратные.', 'Buttons 12–16 are always hardware buttons.')}</p>`;
   }
   const bindHW = () => { const c = box.querySelector('#hwchk'); if (c) c.onchange = () => toggleHW(i, c.checked); };
   if (isSoftBtn(i)) {
@@ -1339,13 +1341,13 @@ setInterval(() => { if (S) showLastMessage(); }, 700);
 // software buttons (SM809 Control performs the action of the profile of the
 // program in front). Buttons 12..16 are always hardware buttons.
 
-const SOFT_N = 11;
+const SOFT_N = 16;
 let softKeys = null, softLayouts = [], liveSig = '';
 const SOFT_MOUSE = () => [['left', L('Левая кнопка', 'Left click')], ['right', L('Правая кнопка', 'Right click')],
   ['middle', L('Средняя кнопка', 'Middle click')], ['back', L('Назад', 'Back')], ['forward', L('Вперёд', 'Forward')]];
 const softMouseName = b => (SOFT_MOUSE().find(x => x[0] === b) || [b, b])[1];
 const isSoftMode = () => S.data.settings.buttonMode === 'software';
-const isSoftBtn = i => isSoftMode() && i < SOFT_N && !S.data.settings.hwButtons[i];
+const isSoftBtn = i => isSoftMode() && i !== LOCKED_BUTTON && i < SOFT_N && !S.data.settings.hwButtons[i];
 const softStat = () => st().soft || { carrier: [], carriable: [], held: [] };
 const modeTitle = m => ({ hardware: L('аппаратные', 'hardware'), software: L('программные', 'software') }[m] || L('не выбран', 'not chosen'));
 function softTouch() { touch(); }
@@ -1386,11 +1388,11 @@ const MODE_INFO = () => ({
   },
   software: {
     title: L('Программные кнопки', 'Software buttons'),
-    text: L('Кнопки 1–11 обрабатывает SM809 Control; мышь записывается один раз.', 'SM809 Control handles buttons 1–11; the mouse is written once.'),
+    text: L('Боковые и другие кнопки обрабатывает SM809 Control; мышь записывается один раз.', 'SM809 Control handles the side and other buttons; the mouse is written once.'),
     pros: [L('свои действия кнопок для каждой программы — переключаются мгновенно и без записи в мышь', 'own button actions for every program — switched instantly and without writing the mouse'),
       L('любые сочетания (Ctrl+Win+→), ввод текста и паролей, запуск программ', 'any combination (Ctrl+Win+→), typing texts and passwords, starting programs'),
       L('макросы без ограничений прошивки, с движением курсора', 'macros without firmware limits, with cursor moves'),
-      L('огонь и DPI остаются — на кнопках, отмеченных как аппаратные; кнопки 12–16 всегда аппаратные', 'rapid fire and DPI stay — on buttons marked as hardware; buttons 12–16 are always hardware')],
+      L('огонь и DPI остаются — на кнопках, отмеченных как аппаратные; программной можно сделать любую кнопку, кроме основной левой', 'rapid fire and DPI stay — on buttons marked as hardware; any button but the main left one can be a software button')],
     cons: [L('программные кнопки работают, только пока запущен SM809 Control', 'software buttons work only while SM809 Control is running'),
       L('программы, запущенные от имени администратора, могут не принимать нажатия', 'programs running as administrator may ignore the presses')],
   },
@@ -1501,8 +1503,8 @@ function softMacroEditor(body, b, set) {
     return;
   }
   body.innerHTML = `<div class="mlist">${ms.map(m => `<div class="it ${b.macroId === m.id ? 'on' : ''}" data-m="${m.id}">${esc(m.name)}<small>${m.events.length} ${L('действий', 'actions')} · ${execName(m.executeType)}${m.executeType === 2 ? ' (' + m.repeatCount + ')' : ''}</small></div>`).join('')}</div>
-    <p class="muted small">${L('Макрос проигрывает программа — те же макросы, что на вкладке «Макросы», и тот же режим повтора. Сдвиги курсора здесь выполняются. «До нажатия любой кнопки» останавливается любой клавишей клавиатуры, другой кнопкой мыши 1–11 или повторным нажатием этой.',
-      'The app plays the macro — the same macros as on the Macros tab, with the same repeat mode. Cursor moves are performed here. “Until any key is pressed” stops on any keyboard key, another mouse button 1–11, or this button again.')}</p>`;
+    <p class="muted small">${L('Макрос проигрывает программа — те же макросы, что на вкладке «Макросы», и тот же режим повтора. Сдвиги курсора здесь выполняются. «До нажатия любой кнопки» останавливается любой клавишей клавиатуры, другой программной кнопкой мыши или повторным нажатием этой.',
+      'The app plays the macro — the same macros as on the Macros tab, with the same repeat mode. Cursor moves are performed here. “Until any key is pressed” stops on any keyboard key, another software button of the mouse, or this button again.')}</p>`;
   body.querySelectorAll('[data-m]').forEach(el => el.onclick = () => set({ ...b, macroId: el.dataset.m }));
 }
 

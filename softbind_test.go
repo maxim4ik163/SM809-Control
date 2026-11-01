@@ -90,18 +90,32 @@ func TestHIDUsageCoverage(t *testing.T) {
 }
 
 func TestSoftSlots(t *testing.T) {
+	seen := map[uint32]bool{}
 	for i := 0; i < softSlots; i++ {
-		if softSlotIndex(softSlotName(i)) != i || carrierSlotOfVK(carrierVK(i)) != i {
+		if softSlotIndex(softSlotName(i)) != i {
 			t.Fatal(i)
 		}
+		if i == lockedSlot {
+			continue
+		}
+		if carrierSlotOfVK(carrierVK(i)) != i || seen[carrierVK(i)] {
+			t.Fatal("carrier VK of button", i+1)
+		}
+		seen[carrierVK(i)] = true
 	}
-	for _, s := range []string{"b0", "b12", "b01", "x1", "b", ""} {
+	for _, s := range []string{"b0", "b17", "b01", "x1", "b", ""} {
 		if softSlotIndex(s) != -1 {
 			t.Errorf("%q accepted", s)
 		}
 	}
-	if carrierSlotOfVK(0x7B) != -1 || carrierSlotOfVK(0x87) != -1 {
-		t.Error("F12 / F24 are not carrier keys")
+	if carrierSlotOfVK(0x7B) != -1 || carrierSlotOfVK(0x88) != -1 || carrierSlotOfVK(0) != -1 {
+		t.Error("F12 / VK 0x88 are not carrier keys")
+	}
+	want := map[int]uint32{0: 0x7C, 10: 0x86, 12: 0x87, 13: 0xAA, 14: 0xAB, 15: 0xA9}
+	for i, vk := range want {
+		if carrierVK(i) != vk {
+			t.Errorf("button %d: VK %#x, want %#x", i+1, carrierVK(i), vk)
+		}
 	}
 	k, ok := keyByVK[0x7C]
 	if !ok || k.Name != "F13" {
@@ -121,7 +135,7 @@ func TestCarrierPackets(t *testing.T) {
 	p := newProfile("t", 0)
 	hw := defaultHW(p)
 	for i := 0; i < softSlots; i++ {
-		if hw[i] != (i == 9) { // button 10 = rapid fire stays a hardware button
+		if hw[i] != (i == 9 || i >= lockedSlot) { // rapid fire and buttons 12..16 start as hardware buttons
 			t.Fatalf("defaultHW[%d] = %v", i, hw[i])
 		}
 	}
@@ -399,5 +413,44 @@ func TestMigrateBeta(t *testing.T) {
 	migrateBeta(d3, carrier, d3.Profiles[0])
 	if d3.Settings.ButtonMode != "" {
 		t.Fatal("mode chosen for the user")
+	}
+}
+
+// Every button but the left click as a software button: buttons 13..16 get
+// F24 and the browser consumer keys; button 12 keeps the left click. Expected
+// packets computed independently (same rules as TestCarrierPackets).
+func TestCarrierAllButtons(t *testing.T) {
+	p := newProfile("t", 0)
+	set := softSettings([softSlots]bool{})
+	m := carriedMask(set)
+	if m[lockedSlot] {
+		t.Fatal("the left click must never be carried")
+	}
+	c := deviceProfile(p, set)
+	if !deviceHasLeft(p, set) {
+		t.Fatal("left click lost")
+	}
+	var codes [numButtons]KeyCode
+	for i, b := range c.Buttons {
+		codes[i] = KeyCode{byte(b.Code[0]), byte(b.Code[1]), byte(b.Code[2])}
+	}
+	pk := EncodeKeys(codes, func() byte { return 0 })
+	exp := []string{
+		"01000268100100700073802102802a02802602700071700072700068700069",
+		"0100121e70006a70006b70006c70006d70007070006e70006fffffffffffff",
+	}
+	for i := range exp {
+		if got := hex.EncodeToString(pk[i]); got != exp[i] {
+			t.Errorf("packet %d:\n got %s\nwant %s", i, got, exp[i])
+		}
+	}
+	if carrierInMemory(c) != m {
+		t.Fatal("carrierInMemory")
+	}
+	// a macro whose bytes look like a carrier is not one
+	q := newProfile("q", 0)
+	q.Buttons[13] = ButtonAssign{Kind: "macro", Code: [3]int{128, 0x21, 0x02}}
+	if carrierInMemory(q)[13] {
+		t.Fatal("macro taken for a carrier")
 	}
 }

@@ -24,13 +24,34 @@ import (
 )
 
 const (
-	softSlots        = 11   // buttons 1..11 (indices 0..10)
-	carrierUsageBase = 104  // HID usage of F13
-	carrierVKBase    = 0x7C // VK_F13
+	softSlots  = 16 // every button (indices 0..15) …
+	lockedSlot = 11 // … except button 12, the main left click: always a hardware button
 
 	ModeHardware = "hardware"
 	ModeSoftware = "software"
 )
+
+// carrierKey is what a software button sends: a key no ordinary keyboard
+// has. F13..F23 for buttons 1..11, F24 for button 13; buttons 14..16 use
+// rare browser keys of the HID consumer page (Windows turns them into
+// VK_BROWSER_SEARCH / FAVORITES / STOP), because the F keys run out.
+type carrierKey struct {
+	Code  [3]int // firmware action
+	VK    uint32 // what the keyboard hook sees
+	Label string
+}
+
+var carriers = func() [softSlots]carrierKey {
+	var c [softSlots]carrierKey
+	for i := 0; i < 11; i++ {
+		c[i] = carrierKey{[3]int{112, 0, 104 + i}, uint32(0x7C + i), fmt.Sprintf("F%d", 13+i)}
+	}
+	c[12] = carrierKey{[3]int{112, 0, 115}, 0x87, "F24"}
+	c[13] = carrierKey{[3]int{128, 0x21, 0x02}, 0xAA, "Browser Search"}    // AC Search 0x221
+	c[14] = carrierKey{[3]int{128, 0x2A, 0x02}, 0xAB, "Browser Favorites"} // AC Bookmarks 0x22A
+	c[15] = carrierKey{[3]int{128, 0x26, 0x02}, 0xA9, "Browser Stop"}      // AC Stop 0x226
+	return c
+}()
 
 func softSlotName(i int) string { return "b" + strconv.Itoa(i+1) }
 
@@ -46,12 +67,14 @@ func softSlotIndex(s string) int {
 	return n - 1
 }
 
-func carrierVK(i int) uint32 { return uint32(carrierVKBase + i) }
+func carrierVK(i int) uint32 { return carriers[i].VK }
 
-// carrierSlotOfVK: VK_F13..VK_F23 → slot index, otherwise -1.
+// carrierSlotOfVK: the button whose carrier key is vk, otherwise -1.
 func carrierSlotOfVK(vk uint32) int {
-	if vk >= carrierVKBase && vk < carrierVKBase+softSlots {
-		return int(vk - carrierVKBase)
+	for i, c := range carriers {
+		if i != lockedSlot && c.VK == vk {
+			return i
+		}
 	}
 	return -1
 }
@@ -186,7 +209,9 @@ func softFromFirmware(b ButtonAssign) SoftBinding {
 func defaultHW(p *Profile) [softSlots]bool {
 	var hw [softSlots]bool
 	for i := 0; i < softSlots; i++ {
-		hw[i] = softFromFirmware(p.Buttons[i]).Kind == ""
+		// buttons 12..16 (left, right, middle, DPI) start as hardware buttons;
+		// each can be made a software button later (except the left click)
+		hw[i] = i >= lockedSlot || softFromFirmware(p.Buttons[i]).Kind == ""
 	}
 	return hw
 }
@@ -206,7 +231,7 @@ func carriedMask(s Settings) [softSlots]bool {
 	var m [softSlots]bool
 	if softMode(s) {
 		for i := range m {
-			m[i] = !s.HWButtons[i]
+			m[i] = i != lockedSlot && !s.HWButtons[i]
 		}
 	}
 	return m
@@ -216,8 +241,12 @@ func carriedMask(s Settings) [softSlots]bool {
 func carrierProfile(p *Profile, m [softSlots]bool) *Profile {
 	c := *p
 	for i := 0; i < softSlots; i++ {
-		if m[i] {
-			c.Buttons[i] = ButtonAssign{Kind: "key", Code: [3]int{112, 0, carrierUsageBase + i}, Label: fmt.Sprintf("F%d", 13+i)}
+		if m[i] && i != lockedSlot {
+			kind := "key"
+			if carriers[i].Code[0] == 128 {
+				kind = "media"
+			}
+			c.Buttons[i] = ButtonAssign{Kind: kind, Code: carriers[i].Code, Label: carriers[i].Label}
 		}
 	}
 	return &c
@@ -243,11 +272,11 @@ func deviceHasLeft(p *Profile, s Settings) bool {
 }
 
 // carrierInMemory: which buttons of a profile read back from the mouse send
-// their carrier key (F13 on button 1 … F23 on button 11).
+// their carrier key.
 func carrierInMemory(p *Profile) [softSlots]bool {
 	var m [softSlots]bool
 	for i := 0; i < softSlots; i++ {
-		m[i] = p.Buttons[i].Code == [3]int{112, 0, carrierUsageBase + i}
+		m[i] = i != lockedSlot && p.Buttons[i].Kind != "macro" && p.Buttons[i].Code == carriers[i].Code
 	}
 	return m
 }
@@ -582,7 +611,7 @@ func migrateBeta(d *Data, carrier [softSlots]bool, base *Profile) {
 			d.Settings.HWButtons = defaultHW(base)
 		} else {
 			for i := range carrier {
-				d.Settings.HWButtons[i] = !carrier[i]
+				d.Settings.HWButtons[i] = i >= lockedSlot || !carrier[i] // the betas carried buttons 1..11 only
 			}
 		}
 	}

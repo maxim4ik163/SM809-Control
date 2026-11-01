@@ -2,8 +2,9 @@
 
 // keyprobe: checks the assumptions of SM809 Control's software bindings.
 //
-// Give one or more SM809 buttons the keys F13..F23 (SM809 Control → Buttons →
-// Key), then run this program. It logs every F13..F24 key seen by
+// Give one or more SM809 buttons the keys F13..F24 (SM809 Control → Buttons →
+// Key) or the media keys used for buttons 14..16 (browser Search, Favorites,
+// Stop), then run this program. It logs every such key seen by
 //   - a low-level keyboard hook (what SM809 Control will use), and
 //   - Raw Input (which device sent it),
 //
@@ -72,17 +73,23 @@ var (
 
 func logf(format string, a ...any) { fmt.Fprintf(out, format+"\n", a...) }
 
-func isF(vk uint32) bool { return vk >= vkF13 && vk <= vkF24 }
+// carrier keys of SM809 Control: F13..F24 and three browser keys
+var browserKeys = map[uint32]string{0xA9: "BrowserStop", 0xAA: "BrowserSearch", 0xAB: "BrowserFavorites"}
+
+func isF(vk uint32) bool { return (vk >= vkF13 && vk <= vkF24) || browserKeys[vk] != "" }
 
 func fname(vk uint32) string {
-	if isF(vk) {
+	if vk >= vkF13 && vk <= vkF24 {
 		return fmt.Sprintf("F%d", 13+vk-vkF13)
+	}
+	if n := browserKeys[vk]; n != "" {
+		return n
 	}
 	return fmt.Sprintf("VK %02X", vk)
 }
 
 func (e event) String() string {
-	s := fmt.Sprintf("%9.1f ms  %-4s %-4s scan %02X", ms(e.t), e.src, fname(e.vk), e.scan)
+	s := fmt.Sprintf("%9.1f ms  %-4s %-6s scan %02X", ms(e.t), e.src, fname(e.vk), e.scan)
 	if e.ext {
 		s += " E0"
 	}

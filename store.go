@@ -134,7 +134,8 @@ type Data struct {
 }
 
 // dataVersion 2 (SM809 Control 2.0): button modes, Profile.Soft.
-const dataVersion = 2
+// 3 (2.1): every button but the left click can be a software button.
+const dataVersion = 3
 
 // DeviceState is what we last wrote to the mouse (signatures per command), so
 // that only differences are sent. Not part of user data.
@@ -323,14 +324,21 @@ func (s *Store) fixup() {
 	for i := range d.Rules {
 		d.Rules[i].Exe = lower(strings.TrimSpace(d.Rules[i].Exe))
 	}
-	if d.Version < dataVersion {
+	if d.Version < 2 {
 		// 2.0: key repeat on by default; 1.5 beta data into profiles and rules
 		if d.Soft == nil {
 			d.Settings.KeyRepeat = true
 		}
 		migrateBeta(d, s.state.Carrier, s.profile(d.Settings.BaseProfile))
-		d.Version = dataVersion
 	}
+	if d.Version < 3 {
+		// 2.1: buttons 12..16 can be software buttons; they stay hardware ones
+		for i := lockedSlot; i < softSlots; i++ {
+			d.Settings.HWButtons[i] = true
+		}
+	}
+	d.Version = dataVersion
+	d.Settings.HWButtons[lockedSlot] = true
 	d.Soft = nil
 	switch d.Settings.ButtonMode {
 	case "", ModeHardware, ModeSoftware:

@@ -5,6 +5,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -443,6 +444,22 @@ func TestButtonModes(t *testing.T) {
 	if cmds(takeSent()) != "1,1" || st.state.Carrier != want || want[1] {
 		t.Fatal("hw change")
 	}
+	// button 16 (DPI−) as a software button: browser-stop consumer key; the
+	// left click (button 12) can never become one
+	hw[15], hw[lockedSlot] = false, false
+	if c, m := post(t, a, "buttons/hw", map[string]any{"hw": hw}); c != 200 || m["ok"] != true {
+		t.Fatal(m)
+	}
+	s16 := takeSent()
+	if !st.data.Settings.HWButtons[lockedSlot] || st.data.Settings.HWButtons[15] || len(s16) != 2 || !strings.Contains(fmt.Sprintf("% x", s16[0]), "80 26 02") {
+		t.Fatalf("button 16: hw %v, sent % x", st.data.Settings.HWButtons, s16)
+	}
+	if !st.state.Carrier[15] || st.state.Carrier[lockedSlot] {
+		t.Fatal("carrier state for buttons 12/16")
+	}
+	hw[15] = true
+	post(t, a, "buttons/hw", map[string]any{"hw": hw})
+	takeSent()
 	// back to software: its action is still there
 	hw[1] = false
 	post(t, a, "buttons/hw", map[string]any{"hw": hw})
@@ -518,5 +535,10 @@ func TestLoad1x(t *testing.T) {
 	st := loadStore(dir)
 	if st.data.Version != dataVersion || !st.data.Settings.KeyRepeat || st.data.Settings.ButtonMode != "" || st.data.Soft != nil {
 		t.Fatalf("%+v", st.data.Settings)
+	}
+	for i := 0; i < softSlots; i++ {
+		if st.data.Settings.HWButtons[i] != (i >= lockedSlot) {
+			t.Fatalf("hw %v", st.data.Settings.HWButtons)
+		}
 	}
 }

@@ -265,3 +265,14 @@ button.modechip { cursor: pointer; }
 .modecard ul.pros li::marker { content: "+  "; color: var(--accent); }
 .modecard ul.cons li::marker { content: "−  "; color: var(--warn); }
 .modecard button { margin-top: auto; align-self: flex-start; }
+
+/* button list laid out like the mouse (2.1) */
+.bgh { margin: 0 0 8px; }
+.bgh + .bgrid { margin-bottom: 16px; }
+.bgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; grid-auto-rows: 19px; }
+.bgrid .bitem { min-height: 0; }
+.bgrid.side { grid-template-areas: "b1 b1 b1" "b1 b1 b1" "b2 b3 b4" "b2 b3 b4" "b5 b6 b4" "b5 b6 b9" "b7 b8 b9" "b7 b8 b9"; }
+.bgrid.top { grid-template-areas: "b10 b12 b13" "b10 b12 b13" "b11 b12 b13" "b11 b12 b13" "b14 b15 b16" "b14 b15 b16"; margin-bottom: 0; }
+.bgrid .bitem .l { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; font-size: 13.5px; }
+.numk { color: #b3261e; }
+.numk.soft { color: var(--accent2); }
