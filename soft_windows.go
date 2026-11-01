@@ -56,9 +56,6 @@ const (
 	msgCapCancel  = WM_APP + 21
 )
 
-// injectedMark goes into dwExtraInfo of every event we inject.
-const injectedMark = 0x534D3839 // "SM89"
-
 type KBDLLHOOKSTRUCT struct {
 	VkCode    uint32
 	ScanCode  uint32
@@ -372,8 +369,15 @@ func (r *softRuntime) anySwallowed() bool {
 func (r *softRuntime) kbdProc(code int, wp, lp uintptr) uintptr {
 	if code == 0 {
 		k := *(**KBDLLHOOKSTRUCT)(unsafe.Pointer(&lp)) // lParam points to the hook struct
-		if k.Flags&LLKHF_INJECTED == 0 && r.decide(k) {
-			return 1
+		switch hookEventKind(k.VkCode, k.Flags&LLKHF_INJECTED != 0, k.ExtraInfo) {
+		case hookKeyboard:
+			if r.decide(k) {
+				return 1
+			}
+		case hookSystemCarrier:
+			if r.decideCarrier(carrierSlotOfVK(k.VkCode), k.Flags&LLKHF_UP != 0) {
+				return 1
+			}
 		}
 	}
 	res, _, _ := pCallNextHookEx.Call(0, uintptr(code), wp, lp)
@@ -391,6 +395,14 @@ func (r *softRuntime) decide(k *KBDLLHOOKSTRUCT) bool {
 		if !up && r.untilAny.Load() > 0 {
 			r.queue(softEvent{slot: -1, down: true}) // stops "until any key" macros
 		}
+		return false
+	}
+	return r.decideCarrier(i, up)
+}
+
+// decideCarrier: a carrier key of button i went down or up. Hook thread only.
+func (r *softRuntime) decideCarrier(i int, up bool) bool {
+	if i < 0 {
 		return false
 	}
 	if up {

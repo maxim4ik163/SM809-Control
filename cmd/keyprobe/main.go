@@ -59,6 +59,7 @@ type event struct {
 	inj    bool
 	dev    string // RAW only
 	repeat bool   // HOOK: a key-down while the key was already down
+	extra  uintptr
 }
 
 var (
@@ -102,7 +103,7 @@ func (e event) String() string {
 		s += " (repeat)"
 	}
 	if e.inj {
-		s += " injected"
+		s += fmt.Sprintf(" injected (extra %X)", e.extra)
 	}
 	if e.dev != "" {
 		s += "  " + shortDev(e.dev)
@@ -124,7 +125,7 @@ func kbdHook(code int, wp, lp uintptr) uintptr {
 		if isF(k.VkCode) {
 			up := k.Flags&LLKHF_UP != 0
 			e := event{t: time.Since(start), src: "HOOK", vk: k.VkCode, scan: k.ScanCode,
-				ext: k.Flags&LLKHF_EXTENDED != 0, up: up, inj: k.Flags&LLKHF_INJECTED != 0}
+				ext: k.Flags&LLKHF_EXTENDED != 0, up: up, inj: k.Flags&LLKHF_INJECTED != 0, extra: k.ExtraInfo}
 			if !up {
 				e.repeat = down[k.VkCode]
 				down[k.VkCode] = true
@@ -132,7 +133,9 @@ func kbdHook(code int, wp, lp uintptr) uintptr {
 				delete(down, k.VkCode)
 			}
 			record(e)
-			if blocking && !e.inj {
+			// like SM809 Control: real carrier keys, and browser keys that
+			// Windows injects for the mouse (HID consumer page)
+			if blocking && (!e.inj || browserKeys[k.VkCode] != "") {
 				return 1
 			}
 		}
@@ -384,8 +387,9 @@ func main() {
 	ev := phase(45, false)
 	summary(ev, "phase 1: watch")
 
-	logf("\nPhase 2 (20 s): F13..F24 are BLOCKED in the hook. Press the same buttons again;")
-	logf("RAW lines should NOT appear any more (nothing else sees the key).")
+	logf("\nPhase 2 (20 s): F13..F24 and the browser keys are BLOCKED in the hook. Press the same")
+	logf("buttons again; RAW lines should NOT appear any more (nothing else sees the key).")
+	logf("Keep a browser in front: browser Search / Favorites / Stop must do nothing now.")
 	waitEnter("Press Enter to start phase 2… ")
 	ev = phase(20, true)
 	summary(ev, "phase 2: blocked")

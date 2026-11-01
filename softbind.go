@@ -69,6 +69,34 @@ func softSlotIndex(s string) int {
 
 func carrierVK(i int) uint32 { return carriers[i].VK }
 
+// injectedMark goes into dwExtraInfo of every event the app injects.
+const injectedMark = 0x534D3839 // "SM89"
+
+// What the keyboard hook does with an event.
+const (
+	hookIgnore        = iota // pass through untouched
+	hookKeyboard             // a real key press: carrier keys, capture, "until any key"
+	hookSystemCarrier        // a carrier key Windows injected on the mouse's behalf
+)
+
+// hookEventKind sorts keyboard hook events. Real key presses are the
+// F-key carriers. The browser-key carriers (HID consumer page) are turned
+// into keystrokes by Windows itself, so they arrive *injected* (confirmed with
+// keyprobe: scan 00 E0, no device); they are accepted as long as they are
+// not ours (our own SendInput carries injectedMark).
+func hookEventKind(vk uint32, injected bool, extra uintptr) int {
+	if !injected {
+		return hookKeyboard
+	}
+	if extra == injectedMark {
+		return hookIgnore
+	}
+	if i := carrierSlotOfVK(vk); i >= 0 && carriers[i].Code[0] == 128 {
+		return hookSystemCarrier
+	}
+	return hookIgnore
+}
+
 // carrierSlotOfVK: the button whose carrier key is vk, otherwise -1.
 func carrierSlotOfVK(vk uint32) int {
 	for i, c := range carriers {

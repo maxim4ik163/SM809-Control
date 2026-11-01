@@ -454,3 +454,27 @@ func TestCarrierAllButtons(t *testing.T) {
 		t.Fatal("macro taken for a carrier")
 	}
 }
+
+func TestHookEventKind(t *testing.T) {
+	cases := []struct {
+		vk       uint32
+		injected bool
+		extra    uintptr
+		want     int
+	}{
+		{0x7C, false, 0, hookKeyboard},         // F13 from the mouse
+		{0x41, false, 0, hookKeyboard},         // any real key (capture, "until any key")
+		{0xAA, true, 0, hookSystemCarrier},     // browser search injected by Windows for the mouse
+		{0xAB, true, 0, hookSystemCarrier},     // browser favorites
+		{0xA9, true, 0, hookSystemCarrier},     // browser stop
+		{0xAA, true, injectedMark, hookIgnore}, // our own SendInput
+		{0x7C, true, 0, hookIgnore},            // injected F13: not from the mouse
+		{0xAF, true, 0, hookIgnore},            // injected volume up: not a carrier
+		{0x41, true, injectedMark, hookIgnore},
+	}
+	for _, c := range cases {
+		if got := hookEventKind(c.vk, c.injected, c.extra); got != c.want {
+			t.Errorf("vk %#x injected %v extra %#x: %d, want %d", c.vk, c.injected, c.extra, got, c.want)
+		}
+	}
+}

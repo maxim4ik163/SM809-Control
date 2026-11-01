@@ -111,3 +111,11 @@ The separate "Soft buttons" tab of the betas is gone; it made it unclear which a
 - Carrier keys (`carriers` table): buttons 1–11 → F13–F23 (`112,0,104..114`), button 13 → F24 (`112,0,115`, VK 0x87), buttons 14–16 → HID consumer AC Search `0x221`, AC Bookmarks `0x22A`, AC Stop `0x226` (`128,lo,hi`; Windows maps them to VK_BROWSER_SEARCH 0xAA, VK_BROWSER_FAVORITES 0xAB, VK_BROWSER_STOP 0xA9). F24 and the browser keys need confirming with `keyprobe` (it logs them too). A real keyboard's browser Search/Favorites/Stop key is swallowed while that button is a software button.
 - Buttons 12–16 start as hardware buttons (`defaultHW`); `dataVersion` 3 marks them hardware in older data.
 - UI: the button list is laid out like the mouse — side panel 1–9 (1 long on top, 4 and 9 tall on the right) and the top 10–16 (12 and 13 tall); a green number = software button, red = hardware.
+
+## Probe results (keyprobe, 2026-11-01, 2.4G dongle) — `testdata/keyprobe-2026-11-01.log`
+
+- **F13–F23 confirmed.** VK 0x7C–0x86, scan codes 0x64–0x6E, not injected, from the dongle's `MI_01&COL01` keyboard collection. The hook sees each key 0.4–1.6 ms before Raw Input. Blocked in the hook, the keys never reached Raw Input (phase 2: 0 raw events for F-keys).
+- **No auto-repeat** was seen while a button was held (2.8 s hold, no repeated key-downs); the app handles both cases.
+- **Browser keys (buttons 14–16) arrive injected.** Windows turns HID consumer usages into keystrokes itself: the hook sees VK 0xA9/0xAA/0xAB with `LLKHF_INJECTED`, scan 00 + E0, and Raw Input reports no device. 2.1.0 ignored all injected events, so these buttons did nothing. 2.1.1 accepts injected browser carrier keys unless they carry our own `injectedMark` (`hookEventKind`). Whether blocking them in the hook also stops Raw Input / app commands is to be confirmed (the probe now blocks them in phase 2 and logs `dwExtraInfo`).
+- **F24 (button 13)** did not appear in the log — not tested yet (button 13 was probably not a software button).
+- Not yet tested: cable and Bluetooth.
