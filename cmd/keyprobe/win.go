@@ -115,6 +115,13 @@ func rawDeviceName(h uintptr) string {
 
 func shortDev(p string) string {
 	u := strings.ToUpper(p)
+	if i := strings.Index(u, "VID&"); i >= 0 { // Bluetooth LE: …_VID&0204F3_PID&026D…
+		u = u[i:]
+		if j := strings.IndexAny(u, "#\\"); j >= 0 {
+			u = u[:j]
+		}
+		return "BT " + u
+	}
 	if i := strings.Index(u, "VID_"); i >= 0 {
 		u = u[i:]
 		if j := strings.Index(u, "#"); j >= 0 {

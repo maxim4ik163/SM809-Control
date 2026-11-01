@@ -132,3 +132,13 @@ The separate "Soft buttons" tab of the betas is gone; it made it unclear which a
 - Buttons 14–16 confirmed: International4 → scan 79, **VK 0xFF**; International5 → scan 7B, **VK 0xEB**; International1 → scan 73, VK 0xC1. All real key presses from `MI_01&COL01`, with typematic repeat (~505 ms, then 31–47 ms), fully blocked by the hook (0 raw events). Two of three VKs differ from the textbook values on this PC, so matching by scan code is required (it is the primary key; VK 0xFF alone never matches).
 - F13–F23 confirmed for the third time.
 - F24 (button 13) still absent: no key at all from the mouse for it — either button 13 was not a software button, or the firmware does not send usage 0x73.
+
+## Probe 4 (2026-11-02): F24, cable, Bluetooth — all carriers confirmed
+
+| connection | log | collection | result |
+|---|---|---|---|
+| 2.4G dongle | `keyprobe-2026-11-02-f24-dongle.log` (+ earlier ones) | `VID_04F3&PID_026F&MI_01&COL01` | F24 (button 13): scan 76, VK 0x87 |
+| cable | `keyprobe-2026-11-02-cable.log` | `VID_04F3&PID_026E&MI_01&COL01` | all 15 carriers |
+| Bluetooth LE | `keyprobe-2026-11-02-bluetooth.log` | BT HID (`…VID&0204F3…`) | all 15 carriers |
+
+On every connection: real key presses (not injected), same scan codes (F13–F24 = 64–6E, 76; International 1/4/5 = 73/79/7B with VK C1/FF/EB on this PC), Windows typematic repeat (~505 ms, then 31–47 ms), and 0 raw events once blocked in the hook. Overlapping presses of several buttons (seen over Bluetooth) arrive as independent down/up pairs. The carrier table of 2.1.2 is final.
