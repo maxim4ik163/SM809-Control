@@ -630,6 +630,25 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		a.uiCall(func() { shellOpen(out) })
 		return map[string]string{"dir": out}, nil
 
+	case "open-url":
+		var req struct {
+			Which string `json:"which"`
+		}
+		if err := dec(&req); err != nil {
+			return nil, err
+		}
+		// only our own project pages
+		u, ok := map[string]string{
+			"repo":     projectURL,
+			"releases": projectURL + "/releases/latest",
+			"issues":   projectURL + "/issues",
+		}[req.Which]
+		if !ok {
+			return nil, errors.New("unknown link")
+		}
+		a.uiCall(func() { shellOpen(u) })
+		return map[string]bool{"ok": true}, nil
+
 	case "backup":
 		return a.backup(), nil
 

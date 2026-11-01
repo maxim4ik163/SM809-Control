@@ -201,8 +201,8 @@ function renderTop() {
   let b = '';
   if (!s.synced) {
     b += `<div class="bn warn"><span><b>${L('Мышь ещё не синхронизирована.', 'The mouse is not synchronised yet.')}</b> ${L(
-      'Программа не может прочитать настройки из мыши, поэтому сначала нужно один раз записать профиль целиком. До этого автопереключение по играм выключено.',
-      'The mouse cannot report its settings, so a profile has to be written in full once. Until then, switching by games is disabled.')}</span>
+      'Программа ещё не знает, что записано в мыши: подключите кабель и прочитайте настройки из мыши или один раз запишите профиль целиком. До этого автопереключение по играм выключено.',
+      'The app does not know yet what is stored in the mouse: connect the cable and read the settings from the mouse, or write a profile in full once. Until then, switching by games is disabled.')}</span>
       ${s.primary && s.primary.mode === 'wired' ? `<button id="bnRead">${L('Прочитать из мыши', 'Read from the mouse')}</button>` : ''}
       <button class="primary" id="bnSync" ${s.primary && s.primary.link && !s.busy ? '' : 'disabled'}>${L('Записать', 'Write')} ${esc(Q(cur ? cur.name : ''))} ${L('в мышь', 'to the mouse')}</button></div>`;
   }
@@ -1128,6 +1128,9 @@ function viewSettings(v) {
   <div class="card"><h2>${L('Язык', 'Language')}</h2>
     <select id="lang"><option value="ru" ${LANG === 'ru' ? 'selected' : ''}>Русский</option><option value="en" ${LANG === 'en' ? 'selected' : ''}>English</option></select>
     <p class="muted small">${L('Язык окна, меню в трее, уведомлений и всплывающих окон.', 'Language of this window, the tray menu, notifications and popups.')}</p></div>
+  <div class="card"><h2>${L('О программе', 'About')}</h2>
+    <p>SM809 Control ${esc(S.version)} · ${L('открытый исходный код, лицензия MIT', 'open source, MIT licence')}</p>
+    <div class="row"><button data-url="releases">${L('Скачать новую версию', 'Download the latest version')}</button><button data-url="repo">${L('Проект на GitHub', 'Project on GitHub')}</button><button class="small" data-url="issues">${L('Сообщить о проблеме', 'Report a problem')}</button></div></div>
   <div class="card" id="autoCard"><h2>${L('Переключение профилей по играм', 'Switching profiles by games')}</h2>
     <label class="check"><input type="checkbox" id="autosw" ${S.data.settings.autoSwitch ? 'checked' : ''}><span>${L('Разрешить', 'Allow')}<small>${L('профиль включается при запуске exe и выключается при его закрытии (вкладка «Профили и игры»)', 'a profile is applied when an exe starts and reverted when it exits (Profiles & games tab)')}</small></span></label>
     <p class="muted small">${L('Выключено по умолчанию: каждое переключение перезаписывает флеш-память мыши, у которой ограниченный ресурс.', 'Off by default: every switch rewrites the mouse flash memory, which has limited endurance.')}</p></div>
@@ -1182,6 +1185,7 @@ function viewSettings(v) {
 
   const mark = () => { if (!setDirty) { setDirty = true; renderEditbar(); } };
   const put = (path, val) => { const ks = path.split('.'); const last = ks.pop(); ks.reduce((o, k) => o[k], s)[last] = val; mark(); };
+  v.querySelectorAll('[data-url]').forEach(el => el.onclick = () => run(() => api('open-url', { which: el.dataset.url })));
   v.querySelector('#lang').onchange = async e => {
     const language = e.target.value;
     // saved immediately, independently of other unsaved settings

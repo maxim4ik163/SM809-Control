@@ -14,6 +14,7 @@ const (
 	pidDongle       = 0x026F
 	pidBLE          = 0x026D
 	appVersion      = "test"
+	projectURL      = "https://example.invalid"
 )
 
 type hidDevice struct {
