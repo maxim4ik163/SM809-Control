@@ -15,7 +15,7 @@ import (
 	"unsafe"
 )
 
-const appVersion = "1.4.0-beta"
+const appVersion = "1.4.0"
 
 const (
 	mainClass   = "SM809ControlMain"

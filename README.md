@@ -21,6 +21,8 @@ An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gamin
 - **Connection indicator** — wired / 2.4 GHz dongle / Bluetooth 1 / Bluetooth 2, battery and charging state.
 - **Battery** — history chart (day/week/month), drain per day, estimated time left or time to full, low-battery notifications with the estimate.
 - **Tray icon** with battery level, quick profile switching, autostart.
+- **Read settings from the mouse** (cable) — the app reads the mouse's own memory (read-only) and shows what is actually stored, compares it with the current profile and can turn it into a profile; after that only real differences are written.
+- **Experimental options** — key debounce threshold, a hidden firmware setting the vendor software does not offer (for switches that start to double-click).
 - **Backup** — export/import profiles and macros, or a full backup of all app data (profiles, settings, flash write counter, battery history) to move to another PC.
 - **English and Russian** UI; the system language is picked on first run.
 
@@ -108,6 +110,8 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md) — status report, all commands, button
 - **Всплывающие окна** DPI и профиля с настройкой внешнего вида.
 - **Индикатор подключения:** провод, донгл, BT1, BT2; заряд.
 - **Батарея:** график, расход в сутки, прогноз остатка и времени до полной зарядки.
+- **Чтение настроек из мыши** (по кабелю) — программа читает собственную память мыши (только чтение), показывает, что в ней реально записано, сравнивает с профилем и может сделать из этого профиль.
+- **Экспериментальные опции** — антидребезг кнопок, скрытая настройка прошивки (на случай, если кнопки начнут даблкликать).
 - **Трей, автозапуск, резервная копия всех данных** для переноса на другой ПК.
 - **Русский и английский** интерфейс.
 
