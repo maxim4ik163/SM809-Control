@@ -476,7 +476,19 @@ function renderButtonEditor(box) {
       ? L('действие хранится в мыши и работает без программы; можно назначить огонь, DPI, макрос прошивки', 'the action is stored in the mouse and works without the app; rapid fire, DPI and firmware macros are available')
       : L('действие выполняет SM809 Control по профилю активной программы; без программы кнопка ничего не делает', 'SM809 Control performs the action by the profile of the program in front; without the app the button does nothing')}</small></span></label>`;
   }
-  const bindHW = () => { const c = box.querySelector('#hwchk'); if (c) c.onchange = () => toggleHW(i, c.checked); };
+  // reset to the factory assignment (hardware) or its software equivalent
+  const soft = isSoftBtn(i);
+  const defB = S.defaults.buttons[i], defS = S.defaults.soft[i];
+  const isDef = soft ? JSON.stringify(draft.soft[i] || {}) === JSON.stringify(defS) : (draft.buttons[i].kind !== 'macro' && codeEq(draft.buttons[i].code, defB.code));
+  title += `<div class="row" style="margin:-4px 0 10px"><button class="small" id="bdef" ${isDef ? 'disabled' : ''} title="${L('Заводское назначение этой кнопки', 'The factory assignment of this button')}">↺ ${L('По умолчанию', 'Default')}: ${esc(soft ? softLabel(defS) : assignLabel(defB))}</button></div>`;
+  const bindHW = () => {
+    const c = box.querySelector('#hwchk'); if (c) c.onchange = () => toggleHW(i, c.checked);
+    const d = box.querySelector('#bdef');
+    if (d) d.onclick = () => {
+      if (soft) { draft.soft[i] = clone(defS); touch(); renderView(); }
+      else { btnCat = catOf(defB); setButton(i, clone(defB)); }
+    };
+  };
   if (isSoftBtn(i)) {
     box.innerHTML = title + '<div id="sbody"></div>';
     bindHW();
@@ -568,7 +580,7 @@ function fireEditor(body, b, cat) {
   });
 }
 
-const execName = t => ({ 1: L('пока кнопка зажата', 'while held'), 2: L('заданное число раз', 'N times'), 3: L('до нажатия любой кнопки', 'until any key is pressed') }[t]);
+const execName = t => ({ 1: L('пока кнопка зажата', 'while held'), 2: L('заданное число раз', 'N times'), 3: L('до повторного нажатия', 'until pressed again') }[t]);
 function macroAssign(body, b) {
   const ms = S.data.macros || [];
   if (!ms.length) {
@@ -744,12 +756,13 @@ function renderMacroEditor(ed) {
       <td><input type="number" min="0" max="${dmax}" value="${e.delay}" data-d="${i}"> ${ms}</td>
       <td style="white-space:nowrap"><button class="small" data-up="${i}" ${i ? '' : 'disabled'}>↑</button> <button class="small" data-dn="${i}" ${i < m.events.length - 1 ? '' : 'disabled'}>↓</button> <button class="small danger" data-del="${i}">✕</button></td></tr>`;
   });
-  const exLabel = { 1: L('Повторять, пока кнопка зажата', 'Repeat while the button is held'), 2: L('Выполнить N раз', 'Run N times'), 3: L('Повторять до нажатия любой кнопки', 'Repeat until any key is pressed') };
+  const exLabel = { 1: L('Повторять, пока кнопка зажата', 'Repeat while the button is held'), 2: L('Выполнить N раз', 'Run N times'), 3: L('Повторять до повторного нажатия', 'Repeat until the button is pressed again') };
   ed.innerHTML = `<div class="card">
     <div class="row"><label class="field" style="flex:1"><span>${L('Название', 'Name')}</span><input type="text" id="mname" value="${esc(m.name)}"></label></div>
     <h3>${L('Как выполнять', 'Run mode')}</h3>
-    <div class="row">${[1, 2, 3].map(t => `<label class="check"><input type="radio" name="ex" data-ex="${t}" ${m.executeType === t ? 'checked' : ''}>${exLabel[t]}</label>`).join('')}
-      <label class="check" ${m.executeType === 2 ? '' : 'style="opacity:.4"'}>N = <input type="number" id="mrep" min="1" max="255" value="${m.repeatCount || 1}" ${m.executeType === 2 ? '' : 'disabled'}></label></div>
+    <div class="row">${[1, 3].map(t => `<label class="check"><input type="radio" name="ex" data-ex="${t}" ${m.executeType === t ? 'checked' : ''}>${exLabel[t]}</label>`).join('')}
+      <span class="nowrap"><label class="check"><input type="radio" name="ex" data-ex="2" ${m.executeType === 2 ? 'checked' : ''}>${exLabel[2]}</label>
+      <label class="check" ${m.executeType === 2 ? '' : 'style="opacity:.4"'}>N = <input type="number" id="mrep" min="1" max="255" value="${m.repeatCount || 1}" ${m.executeType === 2 ? '' : 'disabled'}></label></span></div>
     <h3>${L('Действия', 'Actions')}</h3>
     <div class="evtable"><table><thead><tr><th>#</th><th>${L('Тип', 'Type')}</th><th>${L('Действие', 'Action')}</th><th>${L('Пауза перед', 'Delay before')}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="muted" style="padding:16px">${L('Пусто. Запишите действия или добавьте их кнопками ниже.', 'Empty. Record actions or add them with the buttons below.')}</td></tr>`}</tbody></table></div>
     <div class="meter ${bytes > MAX_BYTES ? 'full' : ''}"><i style="width:${Math.min(100, bytes / MAX_BYTES * 100)}%"></i></div>
@@ -1208,7 +1221,7 @@ function viewSettings(v) {
       'Everything at once — profiles, macros, game rules, settings, flash write counter, what is already on the mouse, battery history. Use it to move the app to another PC. Restoring replaces the current data; a copy of it is kept in %APPDATA%\\SM809Control.')}</p></div>
   <div class="card"><h2>${L('Мышь', 'Mouse')}</h2>
     <div class="row"><button id="force">${L('Записать текущий профиль целиком', 'Write the current profile in full')}</button><button class="danger" id="reset">${L('Сброс к заводским…', 'Factory reset…')}</button></div>
-    <div class="row" style="margin-top:10px"><button class="primary" id="mread">${L('Прочитать настройки из мыши', 'Read settings from the mouse')}</button><button class="small" id="fdump">${L('Сохранить дамп памяти', 'Save memory dump')}</button></div>
+    <div class="row" style="margin-top:10px"><button class="primary" id="mread">${L('Прочитать настройки из мыши', 'Read settings from the mouse')}</button><button class="small" id="fdump">${L('Сохранить дамп памяти', 'Save memory dump')}</button><button class="small" id="diag">${L('Диагностика подключения…', 'Connection diagnostics…')}</button></div>
     <p class="muted small">${L('Только чтение, ничего не записывает. Мышь должна быть подключена кабелем. Показывает, что реально хранится в мыши, и позволяет сделать из этого профиль.', 'Read-only, writes nothing. The mouse must be connected by cable. Shows what is actually stored in the mouse and lets you make a profile from it.')}</p>
     <p class="muted small">${L('Обычно программа записывает только изменения. Полная запись нужна, если настройки в мыши поменяли другой программой.', 'Normally only changes are written. A full write is needed if the mouse settings were changed by another program.')}
     ${L('Каждая запись перезаписывает ячейку флеш-памяти мыши; всего записей через эту программу', 'Each write rewrites a flash sector of the mouse; total writes from this app')}: <b>${st().flashWrites}</b> ${L('(ресурс флеша — десятки тысяч циклов).', '(flash endurance is tens of thousands of cycles).')}</p></div>
@@ -1304,6 +1317,7 @@ function viewSettings(v) {
   };
   v.querySelector('#mread').onclick = e => readFromMouse(e.target);
   v.querySelector('#dbFactory').onclick = () => { const i = v.querySelector('[data-n="debounce"]'); i.value = 2; put('debounce', 2); };
+  v.querySelector('#diag').onclick = connectionDiag;
   v.querySelector('#fdump').onclick = async e => {
     e.target.disabled = true;
     const r = await run(() => api('flash-dump', {}), L('Память прочитана', 'Memory read'));
@@ -1335,6 +1349,31 @@ setInterval(() => { if (S) showLastMessage(); }, 700);
 })();
 
 // ---------------------------------------------------------------------------
+// Connection diagnostics: every HID collection of the mouse and what its
+// status reader got (to find out why a connection is not seen).
+async function connectionDiag() {
+  const rows = await run(() => api('diag/hid'));
+  if (!rows) return;
+  const mode = r => ({ wired: L('кабель', 'cable'), dongle: L('донгл', 'dongle'), bluetooth: 'Bluetooth' }[r.mode] || ('PID ' + r.PID.toString(16)));
+  const hx = n => n.toString(16).toUpperCase().padStart(4, '0');
+  const ago = t => !t || t.startsWith('0001') ? '—' : Math.round((Date.now() - new Date(t)) / 1000) + L(' с назад', ' s ago');
+  const body = rows.map(r => `<tr><td>${esc(mode(r))}</td><td>${hx(r.UsagePage)}:${hx(r.Usage)}</td><td>${r.InLen}/${r.FeatLen}</td>
+    <td>${r.status ? L('статус', 'status') : ''}${r.command ? (r.status ? ', ' : '') + L('команды', 'commands') : ''}</td>
+    <td>${r.status ? `${r.reader.opened ? '●' : '○'} ${r.reader.reports} (${L('опрос', 'polled')} ${r.reader.polled}, ${L('ошибок', 'fails')} ${r.reader.pollFails}) · ${ago(r.reader.last)}` : ''}</td></tr>`).join('');
+  const text = JSON.stringify({ version: S.version, state: { devices: st().devices, primary: st().primary }, hid: rows }, null, 1);
+  modal(`<h2>${L('Диагностика подключения', 'Connection diagnostics')}</h2>
+    <p class="muted small">${L('Все каналы (HID-коллекции) мыши, которые видит Windows. «статус» — канал, из которого программа читает заряд и связь; число — сколько отчётов пришло.', 'Every HID collection of the mouse Windows reports. “status” is the one the app reads battery and link from; the number is how many reports arrived.')}</p>
+    <table class="small"><thead><tr><th>${L('Подключение', 'Connection')}</th><th>Usage</th><th>in/feat</th><th>${L('Роль', 'Role')}</th><th>${L('Отчёты', 'Reports')}</th></tr></thead><tbody>${body || `<tr><td colspan="5" class="muted">${L('Мышь не найдена ни по одному подключению', 'The mouse was not found on any connection')}</td></tr>`}</tbody></table>
+    <div class="foot"><button id="dcopy">${L('Скопировать для разработчика', 'Copy for the developer')}</button><button class="primary" id="dclose">${L('Закрыть', 'Close')}</button></div>`, box => {
+    $('#modalBox').style.maxWidth = '820px';
+    box.querySelector('#dclose').onclick = closeModal;
+    box.querySelector('#dcopy').onclick = async () => {
+      try { await navigator.clipboard.writeText(text); toast(L('Скопировано', 'Copied')); }
+      catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); toast(L('Скопировано', 'Copied')); }
+    };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Button modes (2.0). Hardware mode: everything is in the mouse. Software
 // mode: buttons 1..11 are hardware buttons (their action is in the mouse) or
@@ -1503,8 +1542,8 @@ function softMacroEditor(body, b, set) {
     return;
   }
   body.innerHTML = `<div class="mlist">${ms.map(m => `<div class="it ${b.macroId === m.id ? 'on' : ''}" data-m="${m.id}">${esc(m.name)}<small>${m.events.length} ${L('действий', 'actions')} · ${execName(m.executeType)}${m.executeType === 2 ? ' (' + m.repeatCount + ')' : ''}</small></div>`).join('')}</div>
-    <p class="muted small">${L('Макрос проигрывает программа — те же макросы, что на вкладке «Макросы», и тот же режим повтора. Сдвиги курсора здесь выполняются. «До нажатия любой кнопки» останавливается любой клавишей клавиатуры, другой программной кнопкой мыши или повторным нажатием этой.',
-      'The app plays the macro — the same macros as on the Macros tab, with the same repeat mode. Cursor moves are performed here. “Until any key is pressed” stops on any keyboard key, another software button of the mouse, or this button again.')}</p>`;
+    <p class="muted small">${L('Макрос проигрывает программа — те же макросы, что на вкладке «Макросы», и тот же режим повтора. Сдвиги курсора здесь выполняются. «До повторного нажатия» останавливается повторным нажатием этой же кнопки.',
+      'The app plays the macro — the same macros as on the Macros tab, with the same repeat mode. Cursor moves are performed here. “Until pressed again” stops when the same button is pressed again.')}</p>`;
   body.querySelectorAll('[data-m]').forEach(el => el.onclick = () => set({ ...b, macroId: el.dataset.m }));
 }
 

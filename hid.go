@@ -113,8 +113,47 @@ func queryHID(path string) (hidDevice, bool) {
 	return d, true
 }
 
+// isStatusCollection: the vendor collection with input report 4. Over
+// Bluetooth Windows may report another input length than the 32 bytes of
+// USB, so any vendor collection with an input report of 10+ bytes is read.
 func isStatusCollection(d hidDevice) bool {
-	return d.UsagePage == vendorUsagePage && d.InLen == statusReportLen
+	return d.UsagePage == vendorUsagePage && d.InLen >= 10
+}
+
+// readerStats is shown by Settings → Mouse → connection diagnostics.
+type readerStats struct {
+	Opened    bool      `json:"opened"`
+	Reports   int       `json:"reports"`   // status reports received (pushed or polled)
+	Polled    int       `json:"polled"`    // of those, read by polling
+	PollFails int       `json:"pollFails"` // HidD_GetInputReport failures
+	Last      time.Time `json:"last"`
+	Error     string    `json:"error,omitempty"`
+}
+
+var (
+	statsMu sync.Mutex
+	stats   = map[string]*readerStats{}
+)
+
+func readerStat(path string) *readerStats {
+	statsMu.Lock()
+	defer statsMu.Unlock()
+	s := stats[path]
+	if s == nil {
+		s = &readerStats{}
+		stats[path] = s
+	}
+	return s
+}
+
+func statsSnapshot() map[string]readerStats {
+	statsMu.Lock()
+	defer statsMu.Unlock()
+	out := map[string]readerStats{}
+	for k, v := range stats {
+		out[k] = *v
+	}
+	return out
 }
 
 func isCommandCollection(d hidDevice) bool {
@@ -230,11 +269,25 @@ func startStatusReader(d hidDevice, onReport func(statusReport), onGone func(str
 	}
 	openPaths[d.Path] = true
 	openMu.Unlock()
+	st := readerStat(d.Path)
+	report := func(buf []byte, polled bool) {
+		statsMu.Lock()
+		st.Reports++
+		if polled {
+			st.Polled++
+		}
+		st.Last = time.Now()
+		statsMu.Unlock()
+		onReport(statusReport{Path: d.Path, PID: d.PID, Data: append([]byte(nil), buf...)})
+	}
 	go func() {
 		defer func() {
 			openMu.Lock()
 			delete(openPaths, d.Path)
 			openMu.Unlock()
+			statsMu.Lock()
+			st.Opened = false
+			statsMu.Unlock()
 			onGone(d.Path)
 		}()
 		h := openHID(d.Path, GENERIC_READ|GENERIC_WRITE)
@@ -243,31 +296,83 @@ func startStatusReader(d hidDevice, onReport func(statusReport), onGone func(str
 		}
 		if h == INVALID_HANDLE {
 			logf("не удалось открыть %04X:%04X для чтения статуса", d.VID, d.PID)
+			statsMu.Lock()
+			st.Error = "open failed"
+			statsMu.Unlock()
 			return
 		}
 		defer pCloseHandle.Call(h)
-		logf("статус: подключено %04X:%04X", d.VID, d.PID)
-		buf := make([]byte, int(d.InLen))
-		buf[0] = statusReportID
-		if r, _, _ := pHidD_GetInputReport.Call(h, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf))); r != 0 && buf[0] == statusReportID {
-			for _, b := range buf[1:10] {
-				if b != 0 {
-					onReport(statusReport{Path: d.Path, PID: d.PID, Data: append([]byte(nil), buf...)})
-					break
-				}
-			}
+		statsMu.Lock()
+		st.Opened, st.Error = true, ""
+		statsMu.Unlock()
+		logf("статус: подключено %04X:%04X in=%d", d.VID, d.PID, d.InLen)
+		n := int(d.InLen)
+		if n < statusReportLen {
+			n = statusReportLen
 		}
+		done := make(chan struct{})
+		defer close(done)
+		// Polling on a second handle (a synchronous handle serialises I/O, so
+		// it cannot share the one blocked in ReadFile): the mouse pushes report 4
+		// over USB and the dongle, but over Bluetooth it may stay silent.
+		go pollStatus(d, n, done, func(buf []byte) { report(buf, true) }, st)
+		buf := make([]byte, n)
 		for {
-			var n uint32
-			r, _, err := pReadFile.Call(h, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), ptr(&n), 0)
+			var got uint32
+			r, _, err := pReadFile.Call(h, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)), ptr(&got), 0)
 			if r == 0 {
 				logf("статус: отключено %04X:%04X (%v)", d.VID, d.PID, err)
 				return
 			}
-			if n >= 10 && buf[0] == statusReportID {
-				onReport(statusReport{Path: d.Path, PID: d.PID, Data: append([]byte(nil), buf[:n]...)})
+			if got >= 10 && buf[0] == statusReportID {
+				report(buf[:got], false)
 			}
 		}
 	}()
 	return true
+}
+
+// pollStatus reads input report 4 with HidD_GetInputReport right away and
+// then whenever nothing arrived for a while.
+func pollStatus(d hidDevice, n int, done chan struct{}, onReport func([]byte), st *readerStats) {
+	h := openHID(d.Path, GENERIC_READ|GENERIC_WRITE)
+	if h == INVALID_HANDLE {
+		h = openHID(d.Path, GENERIC_READ)
+	}
+	if h == INVALID_HANDLE {
+		return
+	}
+	defer pCloseHandle.Call(h)
+	poll := func() {
+		buf := make([]byte, n)
+		buf[0] = statusReportID
+		if r, _, _ := pHidD_GetInputReport.Call(h, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf))); r == 0 || buf[0] != statusReportID {
+			statsMu.Lock()
+			st.PollFails++
+			statsMu.Unlock()
+			return
+		}
+		for _, b := range buf[1:10] {
+			if b != 0 {
+				onReport(buf)
+				return
+			}
+		}
+	}
+	poll()
+	t := time.NewTicker(5 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-done:
+			return
+		case <-t.C:
+			statsMu.Lock()
+			silent := time.Since(st.Last) > 8*time.Second
+			statsMu.Unlock()
+			if silent {
+				poll()
+			}
+		}
+	}
 }

@@ -351,9 +351,8 @@ func (r *softRuntime) runProgram(b SoftBinding) {
 // Macros played by the app
 //
 // Same macros as in the Macros tab and the same modes: 1 = repeat while the
-// button is held, 2 = run N times, 3 = repeat until any key (another mouse
-// button, a keyboard key, or this button again) is pressed. Unlike the
-// firmware, the app also performs cursor moves.
+// button is held, 2 = run N times, 3 = repeat until the button is pressed
+// again. Unlike the firmware, the app also performs cursor moves.
 
 type macroRun struct {
 	slot int

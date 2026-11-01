@@ -246,8 +246,7 @@ type softRuntime struct {
 	lastErr    string
 	errAt      time.Time
 
-	untilAny atomic.Int32 // running "until any key" macros (read by the hook)
-	ensured  bool         // carrier checked after the first link this session
+	ensured bool // carrier checked after the first link this session
 }
 
 func newSoftRuntime(st *Store, e *Engine, onOSD func(osdContent)) *softRuntime {
@@ -385,9 +384,6 @@ func (r *softRuntime) decide(k *KBDLLHOOKSTRUCT) bool {
 	}
 	i := carrierSlotOf(k.VkCode, k.ScanCode, k.Flags&LLKHF_EXTENDED != 0)
 	if i < 0 {
-		if !up && r.untilAny.Load() > 0 {
-			r.queue(softEvent{slot: -1, down: true}) // stops "until any key" macros
-		}
 		return false
 	}
 	return r.decideCarrier(i, up)
@@ -432,10 +428,6 @@ func (r *softRuntime) handle(ev softEvent) {
 	defer r.wake() // after the unlock below (deferred calls run in reverse)
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if ev.slot < 0 { // a keyboard key
-		r.stopUntilAny(-1)
-		return
-	}
 	if !ev.down {
 		h := r.held[ev.slot]
 		if h == nil {
@@ -459,9 +451,8 @@ func (r *softRuntime) handle(ev softEvent) {
 	if r.held[ev.slot] != nil {
 		return
 	}
-	// any button press stops "until any key" macros; pressing their own
-	// button again only stops them (a toggle)
-	if r.stopUntilAny(ev.slot) {
+	// "repeat until pressed again": the second press only stops the macro
+	if r.stopRepeat(ev.slot) {
 		r.held[ev.slot] = &softHeld{out: SoftOut{Kind: SoftDisable}}
 		return
 	}
@@ -500,10 +491,6 @@ func (r *softRuntime) handle(ev softEvent) {
 		if run.mode < 1 || run.mode > 3 {
 			run.mode = 2
 		}
-		if run.mode == 3 {
-			r.untilAny.Add(1)
-			go func() { <-run.done; r.untilAny.Add(-1) }()
-		}
 		r.macros[ev.slot] = run
 		h.run = run
 		go playMacro(out.Macro, run)
@@ -529,19 +516,14 @@ func (r *softRuntime) handle(ev softEvent) {
 	}
 }
 
-// stopUntilAny stops running "until any key" macros; true if one of them was
-// started by slot. r.mu held.
-func (r *softRuntime) stopUntilAny(slot int) bool {
-	own := false
-	for s, run := range r.macros {
-		if run.mode == 3 && run.running() {
-			run.halt()
-			if s == slot {
-				own = true
-			}
-		}
+// stopRepeat stops the "repeat until pressed again" macro of slot; true if
+// one was running. r.mu held.
+func (r *softRuntime) stopRepeat(slot int) bool {
+	if run := r.macros[slot]; run != nil && run.mode == 3 && run.running() {
+		run.halt()
+		return true
 	}
-	return own
+	return false
 }
 
 func (r *softRuntime) setError(s string) {

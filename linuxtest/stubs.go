@@ -5,6 +5,7 @@ package main
 import (
 	"errors"
 	"sync"
+	"time"
 )
 
 const (
@@ -75,3 +76,14 @@ func dumpFlash(dir string) (string, error) { return "", errors.New("not on linux
 func shellOpen(string)                      {}
 
 func readMouseMemory() (*MouseMemory, error) { return nil, errors.New("not on linux") }
+
+type readerStats struct {
+	Opened    bool      `json:"opened"`
+	Reports   int       `json:"reports"`
+	Polled    int       `json:"polled"`
+	PollFails int       `json:"pollFails"`
+	Last      time.Time `json:"last"`
+}
+
+func statsSnapshot() map[string]readerStats { return map[string]readerStats{} }
+func isStatusCollection(d hidDevice) bool    { return d.UsagePage == vendorUsagePage && d.InLen >= 10 }

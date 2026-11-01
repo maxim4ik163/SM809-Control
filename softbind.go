@@ -87,7 +87,7 @@ const injectedMark = 0x534D3839 // "SM89"
 // What the keyboard hook does with an event.
 const (
 	hookIgnore   = iota // pass through untouched (injected input: ours or other programs')
-	hookKeyboard        // a real key press: carrier keys, capture, "until any key"
+	hookKeyboard        // a real key press: carrier keys, combination capture
 )
 
 // hookEventKind sorts keyboard hook events: only real key presses matter.

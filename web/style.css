@@ -276,3 +276,4 @@ button.modechip { cursor: pointer; }
 .bgrid .bitem .l { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2; font-size: 13.5px; }
 .numk { color: #b3261e; }
 .numk.soft { color: var(--accent2); }
+.nowrap { display: inline-flex; gap: 10px; align-items: center; white-space: nowrap; }

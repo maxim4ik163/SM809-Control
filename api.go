@@ -245,12 +245,28 @@ func (a *API) softStatus() SoftStatus {
 	return s
 }
 
+// buttonDefaults: factory assignment of every button, and the software
+// action equivalent to it (Kind "" where there is none: rapid fire, DPI).
+type buttonDefaults struct {
+	Buttons [16]ButtonAssign       `json:"buttons"`
+	Soft    [softSlots]SoftBinding `json:"soft"`
+}
+
+func defaultsView() buttonDefaults {
+	d := buttonDefaults{Buttons: defaultButtons()}
+	for i := range d.Soft {
+		d.Soft[i] = softFromFirmware(d.Buttons[i])
+	}
+	return d
+}
+
 type allView struct {
-	Data      *Data     `json:"data"`
-	State     stateView `json:"state"`
-	Lighting  []string  `json:"lighting"`
-	Autostart bool      `json:"autostart"`
-	Version   string    `json:"version"`
+	Defaults  buttonDefaults `json:"defaults"`
+	Data      *Data          `json:"data"`
+	State     stateView      `json:"state"`
+	Lighting  []string       `json:"lighting"`
+	Autostart bool           `json:"autostart"`
+	Version   string         `json:"version"`
 }
 
 func (a *API) handle(path string, body json.RawMessage) (any, error) {
@@ -268,10 +284,35 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		st.mu.Unlock()
 		var d Data
 		_ = json.Unmarshal(b, &d)
-		return allView{Data: &d, State: a.stateView(), Lighting: lightingModes, Autostart: autostartEnabled(), Version: appVersion}, nil
+		return allView{Defaults: defaultsView(), Data: &d, State: a.stateView(), Lighting: lightingModes, Autostart: autostartEnabled(), Version: appVersion}, nil
 
 	case "state":
 		return a.stateView(), nil
+
+	case "diag/hid":
+		// every HID collection of the mouse with what its status reader got
+		type row struct {
+			hidDevice
+			Mode    string      `json:"mode"`
+			Status  bool        `json:"status"`  // read as the status collection
+			Command bool        `json:"command"` // usable as the command channel
+			Reader  readerStats `json:"reader"`
+		}
+		snap := statsSnapshot()
+		rows := []row{}
+		for _, d := range enumerateHID(false) {
+			r := row{hidDevice: d, Status: isStatusCollection(d), Command: isCommandCollection(d), Reader: snap[d.Path]}
+			switch d.PID {
+			case pidWired:
+				r.Mode = "wired"
+			case pidDongle:
+				r.Mode = "dongle"
+			case pidBLE:
+				r.Mode = "bluetooth"
+			}
+			rows = append(rows, r)
+		}
+		return rows, nil
 
 	case "soft/keys":
 		return keyDefs, nil
