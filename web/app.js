@@ -1137,6 +1137,12 @@ function viewSettings(v) {
       'Everything at once — profiles, macros, game rules, settings, flash write counter, what is already on the mouse, battery history. Use it to move the app to another PC. Restoring replaces the current data; a copy of it is kept in %APPDATA%\\SM809Control.')}</p></div>
   <div class="card"><h2>${L('Мышь', 'Mouse')}</h2>
     <div class="row"><button id="force">${L('Записать текущий профиль целиком', 'Write the current profile in full')}</button><button class="danger" id="reset">${L('Сброс к заводским…', 'Factory reset…')}</button></div>
+    <div class="sep"></div>
+    <h3>${L('Антидребезг кнопок — эксперимент', 'Button debounce — experimental')}</h3>
+    ${chk('debounceSet', L('Задавать значение', 'Set the value'), L('скрытая настройка прошивки (команда 9), её нет в фирменных программах', 'a hidden firmware setting (command 9) not offered by the vendor software'))}
+    <div class="row">${num('debounce', L('Значение (заводское — 2)', 'Value (factory — 2)'), 0, 20)}<button class="small" id="dbFactory">${L('Заводское', 'Factory')}</button></div>
+    <p class="muted small">${L('Сколько тактов опроса кнопка должна оставаться в новом положении, прежде чем мышь примет нажатие. Больше — меньше ложных двойных кликов у изношенных кнопок, но клик срабатывает с небольшой задержкой. Меньше — быстрее, но возможен «дребезг». Увеличивайте понемногу (3, 4, 5…), если кнопка начала даблкликать. Отключение галочки ничего не возвращает — чтобы вернуть как было, поставьте 2. Записывается в мышь при сохранении настроек и не меняется при смене профилей.',
+      'How many button scan ticks the new state must hold before the mouse accepts it. Higher — fewer false double clicks on worn switches, but a slightly delayed click. Lower — faster, but bounces may get through. Increase step by step (3, 4, 5…) if a button starts double-clicking. Unticking does not restore anything — set 2 to go back. Written to the mouse when settings are saved; not changed by profile switches.')}</p>
     <div class="row" style="margin-top:10px"><button class="primary" id="mread">${L('Прочитать настройки из мыши', 'Read settings from the mouse')}</button><button class="small" id="fdump">${L('Сохранить дамп памяти', 'Save memory dump')}</button></div>
     <p class="muted small">${L('Только чтение, ничего не записывает. Мышь должна быть подключена кабелем. Показывает, что реально хранится в мыши, и позволяет сделать из этого профиль.', 'Read-only, writes nothing. The mouse must be connected by cable. Shows what is actually stored in the mouse and lets you make a profile from it.')}</p>
     <p class="muted small">${L('Обычно программа записывает только изменения. Полная запись нужна, если настройки в мыши поменяли другой программой.', 'Normally only changes are written. A full write is needed if the mouse settings were changed by another program.')}
@@ -1222,6 +1228,7 @@ function viewSettings(v) {
     if (r) { toast(L('Данные восстановлены', 'Data restored')); editId = null; await reload(); }
   };
   v.querySelector('#mread').onclick = e => readFromMouse(e.target);
+  v.querySelector('#dbFactory').onclick = () => { const i = v.querySelector('[data-n="debounce"]'); i.value = 2; put('debounce', 2); };
   v.querySelector('#fdump').onclick = async e => {
     e.target.disabled = true;
     const r = await run(() => api('flash-dump', {}), L('Память прочитана', 'Memory read'));

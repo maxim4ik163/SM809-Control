@@ -456,6 +456,10 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 			s.Language = old.Language
 		}
 		setLang(s.Language)
+		if s.Debounce < 0 || s.Debounce > debounceMax {
+			s.Debounce = debounceFactory
+		}
+		debounceChanged := s.DebounceSet != old.DebounceSet || (s.DebounceSet && s.Debounce != old.Debounce)
 		if s.ScanSeconds < 1 {
 			s.ScanSeconds = 1
 		}
@@ -465,6 +469,16 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		st.mu.Unlock()
 		if req.Autostart != nil {
 			setAutostart(*req.Autostart)
+		}
+		if debounceChanged && s.DebounceSet {
+			// diff-only apply of the profile that is on the mouse → just the debounce command
+			st.mu.Lock()
+			synced := st.state.Synced
+			st.mu.Unlock()
+			if synced {
+				cur := a.stateView().Current
+				go func() { _ = a.eng.Apply(cur, false, "debounce", false, true); a.notify() }()
+			}
 		}
 		return map[string]bool{"ok": true}, err
 
@@ -560,6 +574,7 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 			}
 		}
 		// the mouse is now known exactly: "what was sent" = what is there
+		mouseSig["debounce"] = debounceSignature(mem.Debounce)
 		st.state.Sent = mouseSig
 		st.state.Synced = true
 		st.state.Seeded = true

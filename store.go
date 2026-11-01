@@ -74,7 +74,12 @@ type Settings struct {
 	ScanSeconds int  `json:"scanSeconds"` // process watcher interval
 	Debug       bool `json:"debug"`
 
-	Language string `json:"language"` // "ru" or "en"; chosen from the system language on first run
+	Language string `json:"language"`
+
+	// Experimental: key debounce threshold (firmware command 9). Only sent
+	// when DebounceSet; factory value is 2.
+	DebounceSet bool `json:"debounceSet"`
+	Debounce    int  `json:"debounce"` // "ru" or "en"; chosen from the system language on first run
 
 	BTPaths []string `json:"btPaths"` // remembered Bluetooth HID paths → BT1, BT2
 }
@@ -265,6 +270,9 @@ func (s *Store) fixup() {
 	d := s.data
 	if d.Settings.Popup.Width == 0 {
 		d.Settings.Popup = defaultPopup()
+	}
+	if !d.Settings.DebounceSet {
+		d.Settings.Debounce = debounceFactory
 	}
 	if d.Settings.ScanSeconds < 1 {
 		d.Settings.ScanSeconds = 2

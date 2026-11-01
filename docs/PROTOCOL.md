@@ -76,7 +76,7 @@ The firmware's report-6 dispatcher (`switch` on the command byte, 0..17) has two
 | 9 | `config[0x78] = D[4]` — key debounce threshold in scan ticks (factory value 2) |
 | 10 | `config[0x7B] = D[4]` — purpose unknown |
 
-Not exposed by SM809 Control yet.
+Command 9 is offered by SM809 Control as an experimental setting (Settings → Mouse); command 10 is not used.
 
 ## Reading the mouse memory (report 0xBF)
 

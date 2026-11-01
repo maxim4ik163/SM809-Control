@@ -29,6 +29,7 @@ const (
 	cmdLighting   = 6
 	cmdPower      = 7
 	cmdSensor     = 8
+	cmdDebounce   = 9 // not used by the vendor tools
 	cmdReset      = 15
 	cmdMacroData  = 16
 	cmdMacroErase = 17
@@ -193,6 +194,12 @@ func EncodeLOD(mm int, seq func() byte) []byte {
 
 func EncodePower(sleepMin int, moveWakeup, moveLighting bool, seq func() byte) []byte {
 	return setCheckSum(pad([]byte{cmdPower, seq(), 1, byte(sleepMin), b2u(moveWakeup), b2u(moveLighting)}, 30, 0xFF))
+}
+
+// EncodeDebounce sets the key debounce threshold (scan ticks). The firmware
+// accepts command 9 but no vendor tool sends it: config[0x78] = value.
+func EncodeDebounce(v int, seq func() byte) []byte {
+	return setCheckSum(pad([]byte{cmdDebounce, seq(), 1, byte(v)}, 30, 0xFF))
 }
 
 func EncodeSensor(angleSnap, motionSync, ripple bool, seq func() byte) []byte {

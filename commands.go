@@ -115,3 +115,24 @@ func parseColor(s string, def uint32) uint32 {
 	return v
 }
 
+
+const (
+	debounceFactory = 2
+	debounceMax     = 20
+)
+
+// deviceCommands are mouse-wide settings that do not belong to a profile.
+func deviceCommands(s Settings) []devCommand {
+	if !s.DebounceSet {
+		return nil
+	}
+	v := s.Debounce
+	if v < 0 || v > debounceMax {
+		v = debounceFactory
+	}
+	return []devCommand{{"debounce", 1, func(seq func() byte) [][]byte { return [][]byte{EncodeDebounce(v, seq)} }}}
+}
+
+func debounceSignature(v int) string {
+	return signature(devCommand{"debounce", 1, func(seq func() byte) [][]byte { return [][]byte{EncodeDebounce(v, seq)} }})
+}

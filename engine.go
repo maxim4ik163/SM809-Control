@@ -285,7 +285,7 @@ func (e *Engine) diff(p *Profile) []string {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	var out []string
-	for _, c := range buildCommands(p, st.macro, sensor) {
+	for _, c := range append(buildCommands(p, st.macro, sensor), deviceCommands(st.data.Settings)...) {
 		if !st.state.Synced || st.state.Sent[c.key] != signature(c) {
 			out = append(out, c.key)
 		}
@@ -417,6 +417,7 @@ func (e *Engine) run(j *applyJob) error {
 	}
 	pc := *p
 	synced := st.state.Synced
+	devCmds := deviceCommands(st.data.Settings)
 	st.mu.Unlock()
 
 	sensor := e.sensorType()
@@ -429,6 +430,7 @@ func (e *Engine) run(j *applyJob) error {
 		}
 		return nil
 	}, sensor)
+	cmds = append(cmds, devCmds...)
 
 	var todo []devCommand
 	st.mu.Lock()
