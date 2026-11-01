@@ -45,25 +45,6 @@ var (
 
 func logf(string, ...any)             {}
 func osdShow(c osdContent)            { osdShown = append(osdShown, c) }
-func parseHex(s string, d uint32) uint32 { return parseColor(s, d) }
-func parseColor(s string, d uint32) uint32 {
-	var v uint32
-	if len(s) != 7 {
-		return d
-	}
-	for _, c := range s[1:] {
-		v <<= 4
-		switch {
-		case c >= '0' && c <= '9':
-			v |= uint32(c - '0')
-		case c >= 'a' && c <= 'f':
-			v |= uint32(c-'a') + 10
-		default:
-			return d
-		}
-	}
-	return v
-}
 func runningProcesses() map[string]int { return procs }
 func autostartEnabled() bool           { return false }
 func setAutostart(bool)                {}
@@ -91,3 +72,5 @@ func (c *cmdChannel) send(p []byte) error {
 
 func dumpFlash(dir string) (string, error) { return "", errors.New("not on linux") }
 func shellOpen(string)                      {}
+
+func readMouseMemory() (*MouseMemory, error) { return nil, errors.New("not on linux") }

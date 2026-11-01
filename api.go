@@ -32,6 +32,17 @@ type API struct {
 	subs  map[chan struct{}]bool
 
 	uiCall func(func()) // run on the UI thread (OSD etc.)
+
+	readMu   sync.Mutex
+	lastRead *mouseReadResult
+}
+
+type mouseReadResult struct {
+	Profile     *Profile `json:"profile"`
+	Macros      []*Macro `json:"macros"`
+	Debounce    int      `json:"debounce"`
+	Compared    string   `json:"compared"`    // name of the profile it was compared with
+	Differences []string `json:"differences"` // command groups that differ from it
 }
 
 func newAPI(eng *Engine, st *Store, uiCall func(func())) (*API, error) {
@@ -514,6 +525,86 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		st.mu.Lock()
 		defer st.mu.Unlock()
 		return st.data, nil
+
+	case "mouse/read":
+		mem, err := readMouseMemory()
+		if err != nil {
+			return nil, err
+		}
+		p, macros, err := decodeMouse(mem, a.eng.sensorType())
+		if err != nil {
+			return nil, err
+		}
+		res := &mouseReadResult{Profile: p, Macros: macros, Debounce: mem.Debounce, Differences: []string{}}
+		mo := func(id string) *Macro {
+			for _, m := range macros {
+				if m.ID == id {
+					return m
+				}
+			}
+			return nil
+		}
+		sensor := a.eng.sensorType()
+		mouseSig := map[string]string{}
+		for _, c := range buildCommands(p, mo, sensor) {
+			mouseSig[c.key] = signature(c)
+		}
+		cur := a.stateView().Current
+		st.mu.Lock()
+		if cp := st.profile(cur); cp != nil {
+			res.Compared = cp.Name
+			for _, c := range buildCommands(cp, st.macro, sensor) {
+				if mouseSig[c.key] != signature(c) {
+					res.Differences = append(res.Differences, c.key)
+				}
+			}
+		}
+		// the mouse is now known exactly: "what was sent" = what is there
+		st.state.Sent = mouseSig
+		st.state.Synced = true
+		st.state.Seeded = true
+		_ = st.saveState()
+		st.mu.Unlock()
+		a.readMu.Lock()
+		a.lastRead = res
+		a.readMu.Unlock()
+		a.eng.changed()
+		return res, nil
+
+	case "mouse/import":
+		var req struct {
+			Name string `json:"name"`
+		}
+		if err := dec(&req); err != nil {
+			return nil, err
+		}
+		a.readMu.Lock()
+		r := a.lastRead
+		a.readMu.Unlock()
+		if r == nil {
+			return nil, errors.New(T("сначала прочитайте настройки из мыши", "read the settings from the mouse first"))
+		}
+		b, _ := json.Marshal(r)
+		var cp mouseReadResult
+		_ = json.Unmarshal(b, &cp)
+		p := cp.Profile
+		p.ID = newID("p")
+		if strings.TrimSpace(req.Name) != "" {
+			p.Name = strings.TrimSpace(req.Name)
+		}
+		st.mu.Lock()
+		st.data.Macros = append(st.data.Macros, cp.Macros...)
+		st.data.Profiles = append(st.data.Profiles, p)
+		st.data.Settings.BaseProfile = p.ID // it is what the mouse holds now
+		err := st.saveData()
+		st.mu.Unlock()
+		a.eng.mu.Lock()
+		if len(a.eng.stack) == 0 {
+			a.eng.active = p.ID
+		}
+		a.eng.mu.Unlock()
+		a.eng.changed()
+		return map[string]string{"id": p.ID}, err
 
 	case "flash-dump":
 		dir := filepath.Join(st.dir, "flashdump-"+time.Now().Format("20060102-150405"))

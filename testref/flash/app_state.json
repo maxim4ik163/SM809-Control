@@ -1,0 +1,380 @@
+{
+  "Profile": {
+    "id": "phno61nxmwm",
+    "name": "Main",
+    "buttons": [
+      {
+        "kind": "key",
+        "code": [
+          112,
+          8,
+          7
+        ],
+        "label": "Win+D"
+      },
+      {
+        "kind": "key",
+        "code": [
+          112,
+          0,
+          31
+        ],
+        "label": "2"
+      },
+      {
+        "kind": "key",
+        "code": [
+          112,
+          0,
+          30
+        ],
+        "label": "1"
+      },
+      {
+        "kind": "key",
+        "code": [
+          112,
+          9,
+          80
+        ],
+        "label": "Ctrl+Win+←"
+      },
+      {
+        "kind": "key",
+        "code": [
+          112,
+          0,
+          33
+        ],
+        "label": "4"
+      },
+      {
+        "kind": "key",
+        "code": [
+          112,
+          0,
+          35
+        ],
+        "label": "6"
+      },
+      {
+        "kind": "macro",
+        "code": [
+          144,
+          0,
+          0
+        ],
+        "label": "Макрос: pass",
+        "macroId": "mhno62xu637"
+      },
+      {
+        "kind": "key",
+        "code": [
+          112,
+          0,
+          34
+        ],
+        "label": "5"
+      },
+      {
+        "kind": "key",
+        "code": [
+          112,
+          9,
+          79
+        ],
+        "label": "Ctrl+Win+→"
+      },
+      {
+        "kind": "fire",
+        "code": [
+          48,
+          16,
+          0
+        ],
+        "label": "Огонь (16 мс)"
+      },
+      {
+        "kind": "media",
+        "code": [
+          128,
+          148,
+          1
+        ],
+        "label": "Мой компьютер"
+      },
+      {
+        "kind": "mouse",
+        "code": [
+          16,
+          1,
+          0
+        ],
+        "label": "Левая кнопка"
+      },
+      {
+        "kind": "mouse",
+        "code": [
+          16,
+          2,
+          0
+        ],
+        "label": "Правая кнопка"
+      },
+      {
+        "kind": "mouse",
+        "code": [
+          16,
+          4,
+          0
+        ],
+        "label": "Средняя кнопка"
+      },
+      {
+        "kind": "dpi",
+        "code": [
+          64,
+          2,
+          0
+        ],
+        "label": "DPI +"
+      },
+      {
+        "kind": "dpi",
+        "code": [
+          64,
+          1,
+          0
+        ],
+        "label": "DPI по кругу"
+      }
+    ],
+    "dpiCount": 4,
+    "dpiLevels": [
+      200,
+      800,
+      1600,
+      3600,
+      6400,
+      12000,
+      12000,
+      12000
+    ],
+    "dpiColors": [
+      "#ff0000",
+      "#0000ff",
+      "#ffff00",
+      "#00ff00",
+      "#00ffff",
+      "#ff00ff",
+      "#ff6b6b",
+      "#4ecdc4"
+    ],
+    "dpiStart": 3,
+    "pollRate": 2,
+    "lod": 1,
+    "sleepMin": 5,
+    "moveWakeup": true,
+    "moveLightOff": true,
+    "angleSnap": false,
+    "motionSync": true,
+    "ripple": false,
+    "lighting": 9
+  },
+  "Macros": [
+    {
+      "id": "mhno62xu637",
+      "name": "pass",
+      "executeType": 2,
+      "repeatCount": 1,
+      "events": [
+        {
+          "type": "keydown",
+          "code": 225,
+          "delay": 0,
+          "index": 0
+        },
+        {
+          "type": "keydown",
+          "code": 4,
+          "delay": 30,
+          "index": 1
+        },
+        {
+          "type": "keyup",
+          "code": 225,
+          "delay": 30,
+          "index": 2
+        },
+        {
+          "type": "keyup",
+          "code": 4,
+          "delay": 30,
+          "index": 3
+        },
+        {
+          "type": "keydown",
+          "code": 7,
+          "delay": 30,
+          "index": 4
+        },
+        {
+          "type": "keyup",
+          "code": 7,
+          "delay": 30,
+          "index": 5
+        },
+        {
+          "type": "keydown",
+          "code": 16,
+          "delay": 30,
+          "index": 6
+        },
+        {
+          "type": "keyup",
+          "code": 16,
+          "delay": 30,
+          "index": 7
+        },
+        {
+          "type": "keydown",
+          "code": 12,
+          "delay": 30,
+          "index": 8
+        },
+        {
+          "type": "keyup",
+          "code": 12,
+          "delay": 30,
+          "index": 9
+        },
+        {
+          "type": "keydown",
+          "code": 17,
+          "delay": 30,
+          "index": 10
+        },
+        {
+          "type": "keyup",
+          "code": 17,
+          "delay": 30,
+          "index": 11
+        },
+        {
+          "type": "keydown",
+          "code": 225,
+          "delay": 30,
+          "index": 12
+        },
+        {
+          "type": "keydown",
+          "code": 45,
+          "delay": 30,
+          "index": 13
+        },
+        {
+          "type": "keyup",
+          "code": 45,
+          "delay": 30,
+          "index": 14
+        },
+        {
+          "type": "keyup",
+          "code": 225,
+          "delay": 30,
+          "index": 15
+        },
+        {
+          "type": "keydown",
+          "code": 89,
+          "delay": 30,
+          "index": 16
+        },
+        {
+          "type": "keyup",
+          "code": 89,
+          "delay": 30,
+          "index": 17
+        },
+        {
+          "type": "keydown",
+          "code": 90,
+          "delay": 30,
+          "index": 18
+        },
+        {
+          "type": "keyup",
+          "code": 90,
+          "delay": 30,
+          "index": 19
+        },
+        {
+          "type": "keydown",
+          "code": 91,
+          "delay": 30,
+          "index": 20
+        },
+        {
+          "type": "keyup",
+          "code": 91,
+          "delay": 30,
+          "index": 21
+        },
+        {
+          "type": "keydown",
+          "code": 89,
+          "delay": 30,
+          "index": 22
+        },
+        {
+          "type": "keyup",
+          "code": 89,
+          "delay": 30,
+          "index": 23
+        },
+        {
+          "type": "keydown",
+          "code": 94,
+          "delay": 30,
+          "index": 24
+        },
+        {
+          "type": "keyup",
+          "code": 94,
+          "delay": 30,
+          "index": 25
+        },
+        {
+          "type": "keydown",
+          "code": 91,
+          "delay": 30,
+          "index": 26
+        },
+        {
+          "type": "keyup",
+          "code": 91,
+          "delay": 30,
+          "index": 27
+        }
+      ]
+    }
+  ],
+  "Device": {
+    "synced": true,
+    "seeded": true,
+    "seq": 80,
+    "sent": {
+      "dpi": "02000245030f010007000f002300ffffffffffffffffffffffffffffffffff|02001255030f010007000f002300ffffffffffffffffffffffffffffffffff",
+      "dpiColors": "030001b2ff00000000ffffff0000ff0000ffffff00ffff6b6b4ecdc4ffffff",
+      "keys": "0100022610010010020010040040020040010030100080940170080770001f|010012a070001e70095070002170002370094f902701700022ffffffffffff|11000117ff0000000000000000000000000000000000000000000000000000|100004f51a07201e02301e04a01e02b01e04301e07b01e07301e10b01e103000|100014511a071e0cb01e0c301e11b01e11201e02301e2db01e2da01e02301e00|100024f71a0759b01e59301e5ab01e5a301e5bb01e5b301e59b01e59301e5e00|1000343b0a07b01e5e301e5bb0005b0000000000000000000000000000000000",
+      "light": "060001feff090000ffffffffffffffffffffffffffffffffffffffffffffff",
+      "lod": "050001f301ffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "poll": "0400010d020000000000000000000000000000000000000000000000000000",
+      "power": "070001fd050101ffffffffffffffffffffffffffffffffffffffffffffffff",
+      "sensor": "080001f8000100ffffffffffffffffffffffffffffffffffffffffffffffff"
+    },
+    "flashWrites": 58,
+    "lastProfile": "phno61nxmwm",
+    "lastApplied": "2026-11-01T12:57:01.379105+04:00"
+  }
+}

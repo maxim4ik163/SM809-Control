@@ -66,3 +66,54 @@ Upload sequence: keys command (1) → erase macros (17) → each macro's packets
 - Settings are not read back by the vendor tools; the host keeps the source of truth.
 - Side lighting is a separate controller driven over UART 19200 by command `{0x70, mode}`; stock firmware sends it 5× starting 10 ticks after power-up (bug: random "colorful" fallback). Fixed by 1 send with a 64-tick delay (`movs r3,#0x40` at 0x2DC90, `movs r7,#1` at 0x2DC9A).
 - Firmware image format: 16-byte header (CS1 = CRC32 reflected, init 0xFFFFFFFF, **no final XOR**, over file[16:]), then 32-byte blocks each followed by big-endian CRC16 (poly 0x8005, init 0xFFFF).
+
+## Undocumented commands
+
+The firmware's report-6 dispatcher (`switch` on the command byte, 0..17) has two cases the vendor tools never send:
+
+| cmd | effect |
+|---|---|
+| 9 | `config[0x78] = D[4]` — key debounce threshold in scan ticks (factory value 2) |
+| 10 | `config[0x7B] = D[4]` — purpose unknown |
+
+Not exposed by SM809 Control yet.
+
+## Reading the mouse memory (report 0xBF)
+
+Feature report `0xBF` (136 bytes incl. ID, wired USB interface 1) is the firmware's IAP channel:
+
+| byte | meaning |
+|---|---|
+| 0 | `0xBF` |
+| 1 | write length — if ≠ 0 the firmware **writes** that many bytes from [8..] to flash |
+| 2 | read length — if [1] = 0 and [2] ≠ 0 the firmware reads [2] bytes (≤ 128) into [8..] |
+| 3 | command, only executed when [1] = [2] = 0 (1/3 erase, 2 enter bootloader, …) |
+| 5..7 | flash address, big endian |
+
+`GET_FEATURE(0xBF)` then returns the buffer (header echoed, data from byte 8). SM809 Control only ever sends [1] = 0, [2] = 1..128, and only over the cable (through the dongle the dongle itself would answer).
+
+### Settings sector 0x7C000 (RAM copy of the config struct, 0x81 bytes)
+
+| offset | content |
+|---|---|
+| 0x00–0x04 | header |
+| 0x05–0x34 | 16 buttons × 3 bytes, in key-packet order (indices 11,12,13,14,15,9,10,0,1,2,3,4,5,8,6,7) |
+| 0x38 | current DPI level |
+| 0x39 | enabled levels bit mask |
+| 0x3A–0x49 | DPI X, 8 × (lo, hi) |
+| 0x4A–0x59 | DPI Y |
+| 0x5A–0x71 | DPI colours, 8 × RGB |
+| 0x72 | polling-rate code |
+| 0x73 | LOD |
+| 0x74–0x76 | angle snap, motion sync, ripple |
+| 0x77 | sleep minutes |
+| 0x78 | key debounce (cmd 9) |
+| 0x7A | sensor type |
+| 0x7B | cmd 10 value |
+| 0x7C–0x7E | lighting mode, brightness/speed, direction |
+| 0x7F | wake on movement |
+| 0x80 | lighting off while moving |
+
+### Macros
+
+Slot index `i = button − 1` (button 16 uses slot 12 → i = 11). `i < 8` → `0x7D000 + i·0x200`, otherwise `0x7B000 + (i−8)·0x200`. Content is the event stream described above, zero-padded.

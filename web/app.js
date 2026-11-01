@@ -203,6 +203,7 @@ function renderTop() {
     b += `<div class="bn warn"><span><b>${L('Мышь ещё не синхронизирована.', 'The mouse is not synchronised yet.')}</b> ${L(
       'Программа не может прочитать настройки из мыши, поэтому сначала нужно один раз записать профиль целиком. До этого автопереключение по играм выключено.',
       'The mouse cannot report its settings, so a profile has to be written in full once. Until then, switching by games is disabled.')}</span>
+      ${s.primary && s.primary.mode === 'wired' ? `<button id="bnRead">${L('Прочитать из мыши', 'Read from the mouse')}</button>` : ''}
       <button class="primary" id="bnSync" ${s.primary && s.primary.link && !s.busy ? '' : 'disabled'}>${L('Записать', 'Write')} ${esc(Q(cur ? cur.name : ''))} ${L('в мышь', 'to the mouse')}</button></div>`;
   }
   if (s.pending) {
@@ -217,6 +218,8 @@ function renderTop() {
   $('#banner').innerHTML = b;
   const sy = $('#bnSync');
   if (sy) sy.onclick = () => run(() => api('profile/apply', { id: st().current, force: true }), L('Записываю профиль в мышь…', 'Writing the profile to the mouse…'));
+  const br = $('#bnRead');
+  if (br) br.onclick = () => readFromMouse(br);
   const be = $('#bnErr');
   if (be) be.onclick = () => { dismissedErr = st().lastError; renderTop(); };
 }
@@ -281,6 +284,42 @@ function settingsBar(bar) {
   $('#ssave').onclick = async () => {
     if (await run(() => api('settings', { settings: setDraft, autostart: autostartDraft }), L('Настройки сохранены', 'Settings saved'))) { setDirty = false; await reload(); }
   };
+}
+
+async function readFromMouse(btn) {
+  if (btn) btn.disabled = true;
+  const r = await run(() => api('mouse/read', {}));
+  if (btn) btn.disabled = false;
+  if (!r) return;
+  await reload();
+  const p = r.profile;
+  const btns = p.buttons.map((b, i) => `<tr><td class="muted">${i + 1}</td><td>${esc(b.kind === 'macro' ? L('Макрос', 'Macro') + ' (' + ((r.macros.find(m => m.id === b.macroId) || {}).events || []).length + ' ' + L('действий', 'actions') + ')' : assignLabel(b))}</td></tr>`).join('');
+  const same = r.differences.length === 0;
+  modal(`<h2>${L('Настройки в мыши', 'Settings in the mouse')}</h2>
+    <p>${same ? L(`Совпадает с профилем ${esc(Q(r.compared))} — записывать ничего не нужно.`, `Identical to profile ${esc(Q(r.compared))} — nothing needs to be written.`)
+      : L(`Отличается от профиля ${esc(Q(r.compared))}: `, `Differs from profile ${esc(Q(r.compared))}: `) + r.differences.map(cmdName).join(', ') + '.'}</p>
+    <div class="grid2" style="gap:12px"><div><table class="small">${btns}</table></div>
+    <div class="small"><p><b>DPI:</b> ${p.dpiLevels.slice(0, p.dpiCount).map((d, i) => `<span style="color:${p.dpiColors[i]}">●</span> ${d}${i === p.dpiStart ? '*' : ''}`).join(' &nbsp;')}</p>
+      <p><b>${L('Подсветка', 'Lighting')}:</b> ${esc(nm(LIGHT_MODES[p.lighting] || ['?', '?']))}</p>
+      <p><b>${L('Опрос', 'Polling')}:</b> ${pollLabel(p.pollRate)} · <b>LOD:</b> ${p.lod} ${L('мм', 'mm')}</p>
+      <p><b>${L('Сон', 'Sleep')}:</b> ${p.sleepMin} ${L('мин', 'min')} · ${L('пробуждение движением', 'wake on move')}: ${p.moveWakeup ? '✓' : '—'} · ${L('гасить при движении', 'light off moving')}: ${p.moveLightOff ? '✓' : '—'}</p>
+      <p><b>${L('Сенсор', 'Sensor')}:</b> angle snap ${p.angleSnap ? '✓' : '—'} · Motion Sync ${p.motionSync ? '✓' : '—'} · Ripple ${p.ripple ? '✓' : '—'}</p>
+      <p class="muted">${L('Антидребезг кнопок (скрытый параметр)', 'Button debounce (hidden setting)')}: ${r.debounce}</p></div></div>
+    <p class="muted small">${L('Теперь программа знает точное содержимое мыши: дальше будут записываться только реальные отличия.', 'The app now knows the exact mouse contents: from now on only real differences are written.')}</p>
+    <div class="foot"><button data-r="close">${L('Закрыть', 'Close')}</button>
+      ${same ? '' : `<button data-r="write">${L('Записать', 'Write')} ${esc(Q(r.compared))}</button>`}
+      <button class="primary" data-r="import">${L('Создать профиль из мыши', 'Create profile from the mouse')}</button></div>`, box => {
+    box.querySelector('[data-r=close]').onclick = closeModal;
+    const w = box.querySelector('[data-r=write]');
+    if (w) w.onclick = async () => { closeModal(); await run(() => api('profile/apply', { id: st().current }), L('Записываю в мышь…', 'Writing to the mouse…')); await reload(); };
+    box.querySelector('[data-r=import]').onclick = async () => {
+      closeModal();
+      const name = await promptBox(L('Имя нового профиля', 'New profile name'), L('Из мыши', 'From the mouse'), L('Создать', 'Create'));
+      if (!name) return;
+      const res = await run(() => api('mouse/import', { name }), L('Профиль создан и выбран — в мышь ничего не записывалось', 'Profile created and selected — nothing was written to the mouse'));
+      if (res) { editId = res.id; dirty = false; await reload(); }
+    };
+  });
 }
 
 function autoSwitchWarning() {
@@ -1098,8 +1137,8 @@ function viewSettings(v) {
       'Everything at once — profiles, macros, game rules, settings, flash write counter, what is already on the mouse, battery history. Use it to move the app to another PC. Restoring replaces the current data; a copy of it is kept in %APPDATA%\\SM809Control.')}</p></div>
   <div class="card"><h2>${L('Мышь', 'Mouse')}</h2>
     <div class="row"><button id="force">${L('Записать текущий профиль целиком', 'Write the current profile in full')}</button><button class="danger" id="reset">${L('Сброс к заводским…', 'Factory reset…')}</button></div>
-    <div class="row" style="margin-top:10px"><button id="fdump">${L('Прочитать память мыши (эксперимент)', 'Read mouse memory (experimental)')}</button></div>
-    <p class="muted small">${L('Только чтение, мышь должна быть подключена кабелем. Сохраняет содержимое секторов настроек, кнопок и макросов в папку и открывает её.', 'Read-only, the mouse must be connected by cable. Saves the settings, buttons and macro sectors to a folder and opens it.')}</p>
+    <div class="row" style="margin-top:10px"><button class="primary" id="mread">${L('Прочитать настройки из мыши', 'Read settings from the mouse')}</button><button class="small" id="fdump">${L('Сохранить дамп памяти', 'Save memory dump')}</button></div>
+    <p class="muted small">${L('Только чтение, ничего не записывает. Мышь должна быть подключена кабелем. Показывает, что реально хранится в мыши, и позволяет сделать из этого профиль.', 'Read-only, writes nothing. The mouse must be connected by cable. Shows what is actually stored in the mouse and lets you make a profile from it.')}</p>
     <p class="muted small">${L('Обычно программа записывает только изменения. Полная запись нужна, если настройки в мыши поменяли другой программой.', 'Normally only changes are written. A full write is needed if the mouse settings were changed by another program.')}
     ${L('Каждая запись перезаписывает ячейку флеш-памяти мыши; всего записей через эту программу', 'Each write rewrites a flash sector of the mouse; total writes from this app')}: <b>${st().flashWrites}</b> ${L('(ресурс флеша — десятки тысяч циклов).', '(flash endurance is tens of thousands of cycles).')}</p></div>
   </div></div>`;
@@ -1182,6 +1221,7 @@ function viewSettings(v) {
     const r = await run(() => api('restore', d));
     if (r) { toast(L('Данные восстановлены', 'Data restored')); editId = null; await reload(); }
   };
+  v.querySelector('#mread').onclick = e => readFromMouse(e.target);
   v.querySelector('#fdump').onclick = async e => {
     e.target.disabled = true;
     const r = await run(() => api('flash-dump', {}), L('Память прочитана', 'Memory read'));

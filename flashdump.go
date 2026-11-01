@@ -196,3 +196,48 @@ func dumpFlash(dir string) (string, error) {
 }
 
 func jsonIndent(v any) ([]byte, error) { return json.MarshalIndent(v, "", "  ") }
+
+// readMouseMemory reads the config struct and the macro slots of buttons that
+// have a macro assigned. Every block is read twice and must match.
+func readMouseMemory() (*MouseMemory, error) {
+	c, err := findIAPChannel()
+	if err != nil {
+		return nil, err
+	}
+	defer pCloseHandle.Call(c.h)
+	read := func(addr uint32, size int) ([]byte, error) {
+		var out []byte
+		for pass := 0; pass < 2; pass++ {
+			var buf []byte
+			for off := 0; off < size; off += iapChunk {
+				n := min(iapChunk, size-off)
+				b, err := c.read(addr+uint32(off), n)
+				if err != nil {
+					return nil, err
+				}
+				buf = append(buf, b...)
+			}
+			if pass == 1 && !bytes.Equal(out, buf) {
+				return nil, errors.New(T("два чтения памяти мыши не совпали", "two reads of the mouse memory differ"))
+			}
+			out = buf
+		}
+		return out, nil
+	}
+	cfg, err := read(cfgAddr, cfgLen)
+	if err != nil {
+		return nil, err
+	}
+	mem := &MouseMemory{Config: cfg, Macros: map[int][]byte{}}
+	for k, idx := range dualPacketOrder {
+		if cfg[cfgKeys+3*k] != 144 {
+			continue
+		}
+		raw, err := read(macroSlotAddr(idx+1), macroSlotLen)
+		if err != nil {
+			return nil, err
+		}
+		mem.Macros[idx+1] = raw
+	}
+	return mem, nil
+}

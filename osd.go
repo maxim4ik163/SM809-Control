@@ -4,7 +4,6 @@ package main
 
 import (
 	"math"
-	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -32,30 +31,6 @@ type osdContent struct {
 	Active  int
 	Accent  uint32
 	Style   PopupStyle
-}
-
-func parseHex(s string, def uint32) uint32 { return parseColor(s, def) }
-
-func parseColor(s string, def uint32) uint32 {
-	s = strings.TrimPrefix(strings.TrimSpace(s), "#")
-	if len(s) != 6 {
-		return def
-	}
-	var v uint32
-	for _, c := range s {
-		v <<= 4
-		switch {
-		case c >= '0' && c <= '9':
-			v |= uint32(c - '0')
-		case c >= 'a' && c <= 'f':
-			v |= uint32(c-'a') + 10
-		case c >= 'A' && c <= 'F':
-			v |= uint32(c-'A') + 10
-		default:
-			return def
-		}
-	}
-	return v
 }
 
 func osdWndProc(hwnd, msg, wp, lp uintptr) uintptr {
