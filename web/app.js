@@ -213,9 +213,10 @@ function renderTop() {
   }
   const ext = (s.extChange || []).join(',');
   if (ext && ext !== dismissedExt) {
-    b += `<div class="bn warn"><span><b>${L('Возможно, настройки мыши были изменены в другой программе', 'The mouse settings may have been changed by another program')}</b> (${s.extChange.map(cmdName).join(', ')}). ${L('Кнопки и макросы без кабеля проверить нельзя.', 'Buttons and macros cannot be checked without the cable.')}</span>
+    b += `<div class="bn warn"><span><b>${L('Возможно, настройки мыши были изменены в другой программе', 'The mouse settings may have been changed by another program')}</b> (${s.extChange.map(cmdName).join(', ')}). ${L('Другая программа могла изменить и кнопки с макросами — подключите кабель и прочитайте настройки из мыши, или запишите профиль целиком.', 'The other program may have changed buttons and macros too — connect the cable and read the settings from the mouse, or write the profile in full.')}</span>
       ${s.primary && s.primary.mode === 'wired' ? `<button id="bnExtRead">${L('Прочитать из мыши', 'Read from the mouse')}</button>` : ''}
-      <button class="primary" id="bnExtFix" ${s.busy ? 'disabled' : ''}>${L('Вернуть', 'Restore')} ${esc(Q(cur ? cur.name : ''))}</button><button class="small" id="bnExtHide">${L('Скрыть', 'Dismiss')}</button></div>`;
+      <button id="bnExtFix" ${s.busy ? 'disabled' : ''} title="${L('Записать только подсветку и частоту', 'Write only lighting and polling rate')}">${L('Вернуть только это', 'Restore just this')}</button>
+      <button class="primary" id="bnExtFull" ${s.busy ? 'disabled' : ''}>${L('Записать', 'Write')} ${esc(Q(cur ? cur.name : ''))} ${L('целиком', 'in full')}</button><button class="small" id="bnExtHide">${L('Скрыть', 'Dismiss')}</button></div>`;
   }
   if (s.lastError && s.lastError !== dismissedErr) {
     b += `<div class="bn err"><span>${L('Ошибка', 'Error')}: ${esc(s.lastError)}</span><button class="small" id="bnErr">${L('Скрыть', 'Dismiss')}</button></div>`;
@@ -227,6 +228,8 @@ function renderTop() {
   if (sy) sy.onclick = () => run(() => api('profile/apply', { id: st().current, force: true }), L('Записываю профиль в мышь…', 'Writing the profile to the mouse…'));
   const xf = $('#bnExtFix');
   if (xf) xf.onclick = () => run(() => api('profile/apply', { id: st().current }), L('Записываю отличия в мышь…', 'Writing the differences to the mouse…'));
+  const xw = $('#bnExtFull');
+  if (xw) xw.onclick = () => run(() => api('profile/apply', { id: st().current, force: true }), L('Записываю профиль целиком…', 'Writing the profile in full…'));
   const xr = $('#bnExtRead');
   if (xr) xr.onclick = () => readFromMouse(xr);
   const xh = $('#bnExtHide');
