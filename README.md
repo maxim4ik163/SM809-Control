@@ -38,14 +38,14 @@ An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gamin
 
 | | SM809 Control | Vendor web driver | Vendor Windows app |
 |---|---|---|---|
-| Writes to the mouse | **only the settings that changed** | buttons **and all macros** every time the page opens, on every change of any setting, even when you press the DPI button on the mouse | the whole profile |
+| Writes to the mouse | **only the settings that changed** | buttons **and all macros** every time the page opens, on every change of any setting, even when you press the DPI button on the mouse | |
 | Reads what is actually stored in the mouse | **yes** (cable) | no | no |
 | Profiles | **unlimited**, per-game switching (opt-in) | several, manual | 3 |
 | DPI values | any per level | any per level | fixed list |
 | Lift-off distance (LOD) | yes | yes | no |
 | Macro editor | recorder, manual editor, type a text | recorder, manual | recorder, manual |
 | Key debounce (hidden setting) | yes (experimental) | no | no |
-| Battery | history, drain, time left, notifications | current % | current % |
+| Battery | history, drain, time left, notifications | | current % |
 | DPI / profile popups | customisable | — | fixed style |
 | Runs | tray app, no browser, no install | browser tab (WebHID) | installer |
 | Flash write counter | yes | — | — |
