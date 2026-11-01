@@ -134,3 +134,60 @@ const PALETTE = [
   ['#ff99cc', 'Светло-розовый', 'Rose'], ['#ffcc99', 'Бежевый', 'Tan'], ['#ffff99', 'Светло-жёлтый', 'Light yellow'], ['#ccffcc', 'Бледно-зелёный', 'Light green'],
   ['#ccffff', 'Светло-бирюзовый', 'Light turquoise'], ['#99ccff', 'Бледно-голубой', 'Pale blue'], ['#cc99ff', 'Сиреневый', 'Lavender'], ['#ffffff', 'Белый', 'White'],
 ];
+
+// ---------------------------------------------------------------------------
+// Text → key presses. The mouse sends physical keys, so what appears on
+// screen depends on the keyboard layout active in Windows at that moment:
+// Latin text is typed correctly with an English layout, Cyrillic text with
+// the standard Russian (ЙЦУКЕН) layout.
+
+const TEXT_US = (() => {
+  const m = {};
+  for (let i = 0; i < 26; i++) { m[String.fromCharCode(97 + i)] = [4 + i, 0]; m[String.fromCharCode(65 + i)] = [4 + i, 1]; }
+  '1234567890'.split('').forEach((c, i) => { m[c] = [30 + i, 0]; });
+  '!@#$%^&*()'.split('').forEach((c, i) => { m[c] = [30 + i, 1]; });
+  Object.assign(m, {
+    ' ': [44, 0], '\n': [40, 0], '\t': [43, 0],
+    '-': [45, 0], '_': [45, 1], '=': [46, 0], '+': [46, 1], '[': [47, 0], '{': [47, 1], ']': [48, 0], '}': [48, 1],
+    '\\': [49, 0], '|': [49, 1], ';': [51, 0], ':': [51, 1], "'": [52, 0], '"': [52, 1], '`': [53, 0], '~': [53, 1],
+    ',': [54, 0], '<': [54, 1], '.': [55, 0], '>': [55, 1], '/': [56, 0], '?': [56, 1],
+  });
+  return m;
+})();
+
+const TEXT_RU = (() => {
+  const m = {};
+  const rows = 'йцукенгшщзхъфывапролджэячсмитьбюё';
+  const keys = [20, 26, 8, 21, 23, 28, 24, 12, 18, 19, 47, 48, 4, 22, 7, 9, 10, 11, 13, 14, 15, 51, 52, 29, 27, 6, 25, 5, 17, 16, 54, 55, 53];
+  rows.split('').forEach((c, i) => { m[c] = [keys[i], 0]; m[c.toUpperCase()] = [keys[i], 1]; });
+  '1234567890'.split('').forEach((c, i) => { m[c] = [30 + i, 0]; });
+  Object.assign(m, {
+    '!': [30, 1], '"': [31, 1], '№': [32, 1], ';': [33, 1], '%': [34, 1], ':': [35, 1], '?': [36, 1], '*': [37, 1], '(': [38, 1], ')': [39, 1],
+    ' ': [44, 0], '\n': [40, 0], '\t': [43, 0], '-': [45, 0], '_': [45, 1], '=': [46, 0], '+': [46, 1],
+    '\\': [49, 0], '/': [49, 1], '.': [56, 0], ',': [56, 1],
+  });
+  return m;
+})();
+
+// textToEvents returns macro events (shift is held across runs of shifted
+// characters to save mouse memory) plus the layout the text needs.
+function textToEvents(text, delay = 10) {
+  text = text.replace(/\r\n?/g, '\n');
+  const hasCyr = /[а-яё]/i.test(text), hasLat = /[a-z]/i.test(text);
+  const layout = hasCyr ? 'ru' : 'en';
+  const map = hasCyr ? TEXT_RU : TEXT_US;
+  const ev = [], bad = new Set();
+  let shift = false;
+  const push = (type, code) => ev.push({ type, code, delay: ev.length ? delay : 0 });
+  for (const ch of text) {
+    const k = map[ch];
+    if (!k) { bad.add(ch === '\n' ? '⏎' : ch); continue; }
+    const [code, sh] = k;
+    if (sh && !shift) { push('keydown', 225); shift = true; }
+    if (!sh && shift) { push('keyup', 225); shift = false; }
+    push('keydown', code);
+    push('keyup', code);
+  }
+  if (shift) push('keyup', 225);
+  return { events: ev, layout, mixed: hasCyr && hasLat, unsupported: [...bad] };
+}

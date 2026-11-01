@@ -732,7 +732,7 @@ function renderMacroEditor(ed) {
       <label class="check">${L('иначе', 'otherwise')} <input type="number" id="rfix" min="0" max="${MAX_DELAY}" value="${store.get('recFixed', 30)}"> ${ms}</label></div>
 
     <h3>${L('Добавить вручную', 'Add manually')}</h3>
-    <div class="row"><select id="akey">${keyOptions(true)}</select><button class="small" data-add="press">${L('Нажать и отпустить', 'Press and release')}</button><button class="small" data-add="keydown">${L('Зажать', 'Press')}</button><button class="small" data-add="keyup">${L('Отпустить', 'Release')}</button></div>
+    <div class="row"><select id="akey">${keyOptions(true)}</select><button class="small" data-add="press">${L('Нажать и отпустить', 'Press and release')}</button><button class="small" data-add="keydown">${L('Зажать', 'Press')}</button><button class="small" data-add="keyup">${L('Отпустить', 'Release')}</button><span style="width:20px"></span><button class="small" id="atext">${L('Ввести текст…', 'Type text…')}</button></div>
     <div class="row"><input type="number" id="adel" min="1" max="${MAX_DELAY}" value="100"> ${ms} <button class="small" data-add="delay">${L('Пауза', 'Delay')}</button>
       <span style="width:20px"></span><select id="adir"><option value="left">${L('влево', 'left')}</option><option value="right">${L('вправо', 'right')}</option><option value="up">${L('вверх', 'up')}</option><option value="down">${L('вниз', 'down')}</option></select>
       <input type="number" id="aval" min="1" max="127" value="10"><button class="small" data-add="move">${L('Сдвиг курсора', 'Move cursor')}</button></div>
@@ -779,6 +779,33 @@ function renderMacroEditor(ed) {
     }
   });
 
+  ed.querySelector('#atext').onclick = () => {
+    const free = MAX_BYTES / 3 - m.events.length;
+    modal(`<h2>${L('Ввести текст', 'Type text')}</h2>
+      <textarea id="ttext" rows="5" style="width:100%;resize:vertical" placeholder="${L('Текст, который макрос напечатает', 'Text for the macro to type')}"></textarea>
+      <div class="small" id="tinfo" style="margin-top:8px"></div>
+      <p class="muted small">${L('Мышь нажимает физические клавиши, а какой символ появится, решает раскладка Windows в момент выполнения: латиница печатается правильно при английской раскладке, кириллица — при русской (ЙЦУКЕН). Смешивать латиницу и кириллицу в одном тексте нельзя. Пауза между нажатиями — 10 мс, Enter — перевод строки.',
+        'The mouse presses physical keys; which character appears depends on the Windows keyboard layout at that moment: Latin text comes out right with an English layout, Cyrillic with the Russian (ЙЦУКЕН) one. Latin and Cyrillic cannot be mixed in one text. 10 ms between key presses; Enter is a line break.')}</p>
+      <div class="foot"><button data-r="0">${L('Отмена', 'Cancel')}</button><button class="primary" data-r="1" id="tok" disabled>${L('Вставить', 'Insert')}</button></div>`, box => {
+      const ta = box.querySelector('#ttext'), info = box.querySelector('#tinfo'), ok = box.querySelector('#tok');
+      let res = null;
+      const upd = () => {
+        res = textToEvents(ta.value);
+        const n = res.events.length;
+        const msgs = [`${L('Действий', 'Actions')}: <b>${n}</b> ${L('из', 'of')} ${free} ${L('свободных', 'free')}`];
+        if (n) msgs.push(res.layout === 'ru' ? L('нужна <b>русская</b> раскладка', 'needs the <b>Russian</b> layout') : L('нужна <b>английская</b> раскладка', 'needs the <b>English</b> layout'));
+        let err = '';
+        if (res.mixed) err = L('Текст содержит и латиницу, и кириллицу — так набрать нельзя.', 'The text mixes Latin and Cyrillic — it cannot be typed.');
+        else if (n > free) err = L('Не помещается в память макроса — сократите текст.', 'Does not fit into the macro memory — shorten the text.');
+        if (res.unsupported.length) msgs.push(`<span style="color:var(--warn)">${L('пропущены символы', 'skipped characters')}: ${esc(res.unsupported.join(' '))}</span>`);
+        info.innerHTML = msgs.join(' · ') + (err ? `<div style="color:var(--err);margin-top:4px">${err}</div>` : '');
+        ok.disabled = !n || !!err;
+      };
+      ta.oninput = upd; upd(); ta.focus();
+      box.querySelector('[data-r="0"]').onclick = closeModal;
+      ok.onclick = () => { closeModal(); if (res && res.events.length) { if (m.events.length) res.events[0].delay = 10; insert(res.events); } };
+    });
+  };
   ed.querySelector('#rdel').onchange = e => store.set('recDelays', e.target.checked);
   ed.querySelector('#rfix').onchange = e => store.set('recFixed', Math.max(0, Math.min(MAX_DELAY, +e.target.value | 0)));
   const recAdd = (type, code) => {
@@ -1137,16 +1164,18 @@ function viewSettings(v) {
       'Everything at once — profiles, macros, game rules, settings, flash write counter, what is already on the mouse, battery history. Use it to move the app to another PC. Restoring replaces the current data; a copy of it is kept in %APPDATA%\\SM809Control.')}</p></div>
   <div class="card"><h2>${L('Мышь', 'Mouse')}</h2>
     <div class="row"><button id="force">${L('Записать текущий профиль целиком', 'Write the current profile in full')}</button><button class="danger" id="reset">${L('Сброс к заводским…', 'Factory reset…')}</button></div>
-    <div class="sep"></div>
-    <h3>${L('Антидребезг кнопок — эксперимент', 'Button debounce — experimental')}</h3>
-    ${chk('debounceSet', L('Задавать значение', 'Set the value'), L('скрытая настройка прошивки (команда 9), её нет в фирменных программах', 'a hidden firmware setting (command 9) not offered by the vendor software'))}
-    <div class="row">${num('debounce', L('Значение (заводское — 2)', 'Value (factory — 2)'), 0, 20)}<button class="small" id="dbFactory">${L('Заводское', 'Factory')}</button></div>
-    <p class="muted small">${L('Сколько тактов опроса кнопка должна оставаться в новом положении, прежде чем мышь примет нажатие. Больше — меньше ложных двойных кликов у изношенных кнопок, но клик срабатывает с небольшой задержкой. Меньше — быстрее, но возможен «дребезг». Увеличивайте понемногу (3, 4, 5…), если кнопка начала даблкликать. Отключение галочки ничего не возвращает — чтобы вернуть как было, поставьте 2. Записывается в мышь при сохранении настроек и не меняется при смене профилей.',
-      'How many button scan ticks the new state must hold before the mouse accepts it. Higher — fewer false double clicks on worn switches, but a slightly delayed click. Lower — faster, but bounces may get through. Increase step by step (3, 4, 5…) if a button starts double-clicking. Unticking does not restore anything — set 2 to go back. Written to the mouse when settings are saved; not changed by profile switches.')}</p>
     <div class="row" style="margin-top:10px"><button class="primary" id="mread">${L('Прочитать настройки из мыши', 'Read settings from the mouse')}</button><button class="small" id="fdump">${L('Сохранить дамп памяти', 'Save memory dump')}</button></div>
     <p class="muted small">${L('Только чтение, ничего не записывает. Мышь должна быть подключена кабелем. Показывает, что реально хранится в мыши, и позволяет сделать из этого профиль.', 'Read-only, writes nothing. The mouse must be connected by cable. Shows what is actually stored in the mouse and lets you make a profile from it.')}</p>
     <p class="muted small">${L('Обычно программа записывает только изменения. Полная запись нужна, если настройки в мыши поменяли другой программой.', 'Normally only changes are written. A full write is needed if the mouse settings were changed by another program.')}
     ${L('Каждая запись перезаписывает ячейку флеш-памяти мыши; всего записей через эту программу', 'Each write rewrites a flash sector of the mouse; total writes from this app')}: <b>${st().flashWrites}</b> ${L('(ресурс флеша — десятки тысяч циклов).', '(flash endurance is tens of thousands of cycles).')}</p></div>
+  <div class="card"><h2>🧪 ${L('Экспериментальные опции', 'Experimental options')}</h2>
+    <p class="muted small">${L('Скрытые возможности прошивки, которых нет в фирменных программах. Найдены при разборе прошивки и на практике проверены не до конца — меняйте осознанно.', 'Hidden firmware features not offered by the vendor software. Found by reading the firmware and not fully field-tested — change them deliberately.')}</p>
+    <h3>${L('Антидребезг кнопок', 'Button debounce')}</h3>
+    ${chk('debounceSet', L('Задавать значение', 'Set the value'), L('скрытая настройка прошивки (команда 9), её нет в фирменных программах', 'a hidden firmware setting (command 9) not offered by the vendor software'))}
+    <div class="row">${num('debounce', L('Значение (заводское — 2)', 'Value (factory — 2)'), 0, 20)}<button class="small" id="dbFactory">${L('Заводское', 'Factory')}</button></div>
+    <p class="muted small">${L('Сколько тактов опроса кнопка должна оставаться в новом положении, прежде чем мышь примет нажатие. Больше — меньше ложных двойных кликов у изношенных кнопок, но клик срабатывает с небольшой задержкой. Меньше — быстрее, но возможен «дребезг». Увеличивайте понемногу (3, 4, 5…), если кнопка начала даблкликать. Отключение галочки ничего не возвращает — чтобы вернуть как было, поставьте 2. Записывается в мышь при сохранении настроек и не меняется при смене профилей.',
+      'How many button scan ticks the new state must hold before the mouse accepts it. Higher — fewer false double clicks on worn switches, but a slightly delayed click. Lower — faster, but bounces may get through. Increase step by step (3, 4, 5…) if a button starts double-clicking. Unticking does not restore anything — set 2 to go back. Written to the mouse when settings are saved; not changed by profile switches.')}</p>
+</div>
   </div></div>`;
 
   const mark = () => { if (!setDirty) { setDirty = true; renderEditbar(); } };
