@@ -34,6 +34,26 @@ An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gamin
 
 ![Settings and popups](docs/screenshots/settings.png)
 
+## Why not the vendor software?
+
+| | SM809 Control | Vendor web driver | Vendor Windows app |
+|---|---|---|---|
+| Writes to the mouse | **only the settings that changed** | buttons **and all macros** every time the page opens, on every change of any setting, even when you press the DPI button on the mouse | the whole profile |
+| Reads what is actually stored in the mouse | **yes** (cable) | no | no |
+| Profiles | **unlimited**, per-game switching (opt-in) | several, manual | 3 |
+| DPI values | any per level | any per level | fixed list |
+| Lift-off distance (LOD) | yes | yes | no |
+| Macro editor | recorder, manual editor, type a text | recorder, manual | recorder, manual |
+| Key debounce (hidden setting) | yes (experimental) | no | no |
+| Battery | history, drain, time left, notifications | current % | current % |
+| DPI / profile popups | customisable | — | fixed style |
+| Runs | tray app, no browser, no install | browser tab (WebHID) | installer |
+| Flash write counter | yes | — | — |
+
+**Why it matters.** The mouse rewrites a 4 KB flash sector for every settings command it accepts, and flash memory has a limited number of rewrites. The web driver resends all buttons and macros on almost any action — opening the page, changing the lighting, even a DPI change reported by the mouse — so a simple session costs dozens of rewrites. SM809 Control keeps track of what is already in the mouse and sends only real differences; switching to a profile that differs only in DPI is two small writes, and nothing is written at all when nothing changed.
+
+After using the vendor software, use **Settings → Mouse → Read settings from the mouse** (cable) or **Write the current profile in full**, because the vendor tools overwrite the mouse without telling anyone.
+
 ## Download and run
 
 Get `SM809Control.exe` from [Releases](../../releases) — a single file, no installation.
@@ -43,7 +63,7 @@ Get `SM809Control.exe` from [Releases](../../releases) — a single file, no ins
 - The window is a separate short-lived process: when you close it, only a small background part (≈10–15 MB) keeps running for the tray, popups and per-game switching.
 - Do not run the vendor software or web driver at the same time.
 
-**First run.** The mouse cannot report its settings, so the PC is the source of truth. The default profile is initialised from what the mouse does report (lighting, polling rate, current DPI level); check the tabs and press **“Write … to the mouse”** in the yellow bar once. Until that first full write, per-game switching is disabled.
+**First run.** The app has to know what is in the mouse. With the cable connected, press **“Read from the mouse”** in the yellow bar — the app reads the mouse memory (nothing is written) and from then on writes only differences; you can also save what was read as a profile. Without the cable, check the tabs and press **“Write … to the mouse”** once. Until one of these is done, per-game switching is disabled.
 
 **Flash wear.** The mouse rewrites a 4 KB flash sector on every accepted command. The app sends only differences, never rewrites the mouse while a game runs, keeps per-game switching off by default and shows a write counter in Settings.
 
@@ -115,8 +135,19 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md) — status report, all commands, button
 - **Трей, автозапуск, резервная копия всех данных** для переноса на другой ПК.
 - **Русский и английский** интерфейс.
 
+**Чем лучше фирменных программ**
+
+- **Бережёт память мыши.** Мышь перезаписывает сектор флеш-памяти на каждую принятую команду, а ресурс перезаписи у флеша ограничен. Веб-драйвер заново записывает все кнопки и все макросы почти на любое действие: при открытии страницы, при изменении любой настройки, даже когда мышь сообщает о смене DPI кнопкой. SM809 Control помнит, что уже записано в мышь, и отправляет только реальные отличия; если ничего не изменилось — не пишет ничего.
+- **Читает настройки из самой мыши** (по кабелю) — фирменные программы этого не умеют.
+- **Профилей без ограничений** (в фирменной программе — 3) и переключение по играм.
+- **Любые значения DPI** (в фирменной программе — фиксированный список) и **LOD**, которого нет в фирменной программе.
+- **Ввод текста** в макросах, **антидребезг кнопок**, **история и прогноз заряда**, настраиваемые всплывающие окна, счётчик записей во флеш.
+- Работает в трее, без браузера и без установки.
+
+После работы в фирменной программе или веб-драйвере прочитайте настройки из мыши по кабелю или запишите профиль целиком — они перезаписывают мышь, никого не предупреждая.
+
 **Запуск:** скачайте `SM809Control.exe` в [Releases](../../releases). Установка не нужна, программа работает в трее. Не запускайте одновременно с фирменной программой или веб-драйвером.
 
-**Первый запуск:** мышь не умеет отдавать свои настройки, поэтому их нужно один раз записать целиком — кнопка в жёлтой полосе вверху окна.
+**Первый запуск:** программе нужно знать, что записано в мыши. Подключите кабель и нажмите «Прочитать из мыши» в жёлтой полосе — ничего не записывается, дальше пишутся только отличия. Без кабеля — один раз запишите профиль целиком.
 
 **Сборка:** см. раздел [Building](#building) выше.
