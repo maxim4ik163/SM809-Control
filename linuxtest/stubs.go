@@ -88,3 +88,6 @@ func (c *cmdChannel) send(p []byte) error {
 	sentMu.Unlock()
 	return nil
 }
+
+func dumpFlash(dir string) (string, error) { return "", errors.New("not on linux") }
+func shellOpen(string)                      {}

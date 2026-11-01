@@ -1098,6 +1098,8 @@ function viewSettings(v) {
       'Everything at once — profiles, macros, game rules, settings, flash write counter, what is already on the mouse, battery history. Use it to move the app to another PC. Restoring replaces the current data; a copy of it is kept in %APPDATA%\\SM809Control.')}</p></div>
   <div class="card"><h2>${L('Мышь', 'Mouse')}</h2>
     <div class="row"><button id="force">${L('Записать текущий профиль целиком', 'Write the current profile in full')}</button><button class="danger" id="reset">${L('Сброс к заводским…', 'Factory reset…')}</button></div>
+    <div class="row" style="margin-top:10px"><button id="fdump">${L('Прочитать память мыши (эксперимент)', 'Read mouse memory (experimental)')}</button></div>
+    <p class="muted small">${L('Только чтение, мышь должна быть подключена кабелем. Сохраняет содержимое секторов настроек, кнопок и макросов в папку и открывает её.', 'Read-only, the mouse must be connected by cable. Saves the settings, buttons and macro sectors to a folder and opens it.')}</p>
     <p class="muted small">${L('Обычно программа записывает только изменения. Полная запись нужна, если настройки в мыши поменяли другой программой.', 'Normally only changes are written. A full write is needed if the mouse settings were changed by another program.')}
     ${L('Каждая запись перезаписывает ячейку флеш-памяти мыши; всего записей через эту программу', 'Each write rewrites a flash sector of the mouse; total writes from this app')}: <b>${st().flashWrites}</b> ${L('(ресурс флеша — десятки тысяч циклов).', '(flash endurance is tens of thousands of cycles).')}</p></div>
   </div></div>`;
@@ -1179,6 +1181,12 @@ function viewSettings(v) {
     if (dirty || mDirty || rulesDirty || setDirty) { dirty = mDirty = rulesDirty = setDirty = false; mDraft = null; }
     const r = await run(() => api('restore', d));
     if (r) { toast(L('Данные восстановлены', 'Data restored')); editId = null; await reload(); }
+  };
+  v.querySelector('#fdump').onclick = async e => {
+    e.target.disabled = true;
+    const r = await run(() => api('flash-dump', {}), L('Память прочитана', 'Memory read'));
+    e.target.disabled = false;
+    if (r) toast(r.dir);
   };
   v.querySelector('#force').onclick = () => run(() => api('profile/apply', { id: st().current, force: true }), L('Записываю профиль целиком…', 'Writing the profile in full…'));
   v.querySelector('#reset').onclick = async () => {

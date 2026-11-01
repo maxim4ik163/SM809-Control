@@ -515,6 +515,15 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		defer st.mu.Unlock()
 		return st.data, nil
 
+	case "flash-dump":
+		dir := filepath.Join(st.dir, "flashdump-"+time.Now().Format("20060102-150405"))
+		out, err := dumpFlash(dir)
+		if err != nil {
+			return nil, err
+		}
+		a.uiCall(func() { shellOpen(out) })
+		return map[string]string{"dir": out}, nil
+
 	case "backup":
 		return a.backup(), nil
 
