@@ -108,7 +108,7 @@ func TestMatchesWebDriver(t *testing.T) {
 	colors := [8]uint32{0xea5e56, 0x0066ff, 0x32aa70, 0xf59c25, 0x00dde4, 0xb500ec, 0xff6b6b, 0x4ecdc4}
 	for _, c := range []struct {
 		sensor, cnt, cur int
-		lv              []int
+		lv               []int
 	}{
 		{17, 6, 2, []int{400, 800, 1600, 3200, 6400, 24000}},
 		{149, 4, 3, []int{400, 850, 1650, 26000}},
@@ -156,5 +156,30 @@ func TestMacroButtonCode(t *testing.T) {
 	}
 	if c := MacroButtonCode(3, 3, 0); c != (KeyCode{144, 0x43, 0}) {
 		t.Error(c)
+	}
+}
+
+func TestPlausibleStatus(t *testing.T) {
+	// a real report 4 from the dongle: link, level 3, 500 Hz, 80 %, on battery, light 9, max 1, PAW3311
+	ok := []byte{4, 1, 3, 2, 80, 0, 9, 0, 1, 0x11}
+	if !plausibleStatus(ok) {
+		t.Fatal("real status rejected")
+	}
+	offline := []byte{4, 0, 3, 2, 80, 0, 9, 0, 1, 0x11}
+	if !plausibleStatus(offline) {
+		t.Fatal("offline status rejected")
+	}
+	for i, bad := range [][]byte{
+		{5, 1, 3, 2, 80, 0, 9},              // short
+		{5, 7, 3, 2, 80, 0, 9, 0, 1, 0x11},  // link flag
+		{5, 1, 3, 3, 80, 0, 9, 0, 1, 0x11},  // polling code 3
+		{5, 1, 3, 2, 180, 0, 9, 0, 1, 0x11}, // battery
+		{5, 1, 3, 2, 80, 0, 9, 0, 1, 0x77},  // unknown sensor
+		{5, 0, 0, 0, 0, 0, 0, 0, 0, 0},      // zeros
+		{5, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF},
+	} {
+		if plausibleStatus(bad) {
+			t.Errorf("case %d accepted", i)
+		}
 	}
 }

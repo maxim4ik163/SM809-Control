@@ -1359,7 +1359,8 @@ async function connectionDiag() {
   const ago = t => !t || t.startsWith('0001') ? '—' : Math.round((Date.now() - new Date(t)) / 1000) + L(' с назад', ' s ago');
   const body = rows.map(r => `<tr><td>${esc(mode(r))}</td><td>${hx(r.UsagePage)}:${hx(r.Usage)}</td><td>${r.InLen}/${r.FeatLen}</td>
     <td>${r.status ? L('статус', 'status') : ''}${r.command ? (r.status ? ', ' : '') + L('команды', 'commands') : ''}</td>
-    <td>${r.status ? `${r.reader.opened ? '●' : '○'} ${r.reader.reports} (${L('опрос', 'polled')} ${r.reader.polled}, ${L('ошибок', 'fails')} ${r.reader.pollFails}) · ${ago(r.reader.last)}` : ''}</td></tr>`).join('');
+    <td>${r.status ? `${r.reader.opened ? '●' : '○'} ${r.reader.reports} (${L('опрос', 'polled')} ${r.reader.polled}, ${L('ошибок', 'fails')} ${r.reader.pollFails}, ${L('отчёт 5', 'report 5')} ${r.reader.feat5 || 0}/${r.reader.feat5Bad || 0}) · ${ago(r.reader.last)}` : ''}</td></tr>`
+    + (r.status && (r.reader.lastInput || r.reader.lastFeat5) ? `<tr><td></td><td colspan="4" class="muted" style="font-family:Consolas,monospace;font-size:11.5px">${r.reader.lastInput ? '4: ' + esc(r.reader.lastInput) : ''}${r.reader.lastFeat5 ? ' &nbsp; 5: ' + esc(r.reader.lastFeat5) : ''}</td></tr>` : '')).join('');
   const text = JSON.stringify({ version: S.version, state: { devices: st().devices, primary: st().primary }, hid: rows }, null, 1);
   modal(`<h2>${L('Диагностика подключения', 'Connection diagnostics')}</h2>
     <p class="muted small">${L('Все каналы (HID-коллекции) мыши, которые видит Windows. «статус» — канал, из которого программа читает заряд и связь; число — сколько отчётов пришло.', 'Every HID collection of the mouse Windows reports. “status” is the one the app reads battery and link from; the number is how many reports arrived.')}</p>

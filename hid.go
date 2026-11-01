@@ -3,9 +3,11 @@
 package main
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -126,9 +128,17 @@ type readerStats struct {
 	Reports   int       `json:"reports"`   // status reports received (pushed or polled)
 	Polled    int       `json:"polled"`    // of those, read by polling
 	PollFails int       `json:"pollFails"` // HidD_GetInputReport failures
+	Feat5     int       `json:"feat5"`     // feature report 5 reads that looked like a status
+	Feat5Bad  int       `json:"feat5Bad"`  // … that did not (or failed)
 	Last      time.Time `json:"last"`
 	Error     string    `json:"error,omitempty"`
+	LastInput string    `json:"lastInput,omitempty"` // hex of the last report 4
+	LastFeat5 string    `json:"lastFeat5,omitempty"` // hex of the last feature report 5
 }
+
+// commandsActive is set while the engine writes the mouse, so polling does
+// not interleave with a command sequence.
+var commandsActive atomic.Bool
 
 var (
 	statsMu sync.Mutex
@@ -277,6 +287,9 @@ func startStatusReader(d hidDevice, onReport func(statusReport), onGone func(str
 			st.Polled++
 		}
 		st.Last = time.Now()
+		if buf[0] == statusReportID {
+			st.LastInput = hex.EncodeToString(buf[:min(len(buf), 16)])
+		}
 		statsMu.Unlock()
 		onReport(statusReport{Path: d.Path, PID: d.PID, Data: append([]byte(nil), buf...)})
 	}
@@ -343,21 +356,78 @@ func pollStatus(d hidDevice, n int, done chan struct{}, onReport func([]byte), s
 		return
 	}
 	defer pCloseHandle.Call(h)
-	poll := func() {
-		buf := make([]byte, n)
-		buf[0] = statusReportID
-		if r, _, _ := pHidD_GetInputReport.Call(h, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf))); r == 0 || buf[0] != statusReportID {
+	// the command collection of the same device, for feature report 5 (the
+	// vendor tools poll it; over Bluetooth input report 4 cannot be read)
+	var cmd hidDevice
+	for _, c := range enumerateHID(false) {
+		if c.PID == d.PID && isCommandCollection(c) && samePhysical(c.Path, d.Path) {
+			cmd = c
+			break
+		}
+	}
+	feat5 := func() bool {
+		if cmd.Path == "" || commandsActive.Load() {
+			return false
+		}
+		ch := openHID(cmd.Path, GENERIC_READ|GENERIC_WRITE)
+		if ch == INVALID_HANDLE {
+			return false
+		}
+		defer pCloseHandle.Call(ch)
+		for _, ln := range []int{cmdReportLen, int(cmd.FeatLen)} {
+			if ln < cmdReportLen {
+				continue
+			}
+			buf := make([]byte, ln)
+			buf[0] = 0x05
+			if r, _, _ := pHidD_GetFeature.Call(ch, uintptr(unsafe.Pointer(&buf[0])), uintptr(ln)); r == 0 {
+				continue
+			}
+			ok := plausibleStatus(buf)
 			statsMu.Lock()
-			st.PollFails++
+			st.LastFeat5 = hex.EncodeToString(buf[:min(len(buf), 16)])
+			if ok {
+				st.Feat5++
+			} else {
+				st.Feat5Bad++
+			}
 			statsMu.Unlock()
+			if ok {
+				onReport(buf)
+			}
+			return ok
+		}
+		statsMu.Lock()
+		st.Feat5Bad++
+		statsMu.Unlock()
+		return false
+	}
+	inputFails := 0
+	poll := func() {
+		if feat5() {
 			return
 		}
-		for _, b := range buf[1:10] {
-			if b != 0 {
-				onReport(buf)
-				return
-			}
+		// input report 4: works over USB; over Bluetooth it fails (and may
+		// block), so it is given up after two failures in a row
+		if inputFails >= 2 {
+			return
 		}
+		buf := make([]byte, n)
+		buf[0] = statusReportID
+		if r, _, _ := pHidD_GetInputReport.Call(h, uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf))); r != 0 && buf[0] == statusReportID {
+			inputFails = 0
+			for _, b := range buf[1:10] {
+				if b != 0 {
+					onReport(buf)
+					return
+				}
+			}
+			return
+		}
+		inputFails++
+		statsMu.Lock()
+		st.PollFails++
+		statsMu.Unlock()
 	}
 	poll()
 	t := time.NewTicker(5 * time.Second)

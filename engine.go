@@ -365,6 +365,7 @@ func samePhysical(a, b string) bool {
 }
 
 func (e *Engine) setBusy(b bool, msg string) {
+	commandsActive.Store(b)
 	e.mu.Lock()
 	e.busy = b
 	e.progress = msg

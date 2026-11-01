@@ -1,0 +1,265 @@
+{
+ "version": "2.1.3",
+ "state": {
+  "devices": [
+   {
+    "pid": 623,
+    "mode": "dongle",
+    "link": false,
+    "level": 3,
+    "rate": 2,
+    "battery": 80,
+    "charge": 0,
+    "light": 9,
+    "maxRate": 1,
+    "sensor": 17,
+    "updated": "2026-11-02T01:14:29.6228443+04:00",
+    "hasState": true
+   }
+  ],
+  "primary": {
+   "pid": 623,
+   "mode": "dongle",
+   "link": false,
+   "level": 3,
+   "rate": 2,
+   "battery": 80,
+   "charge": 0,
+   "light": 9,
+   "maxRate": 1,
+   "sensor": 17,
+   "updated": "2026-11-02T01:14:29.6228443+04:00",
+   "hasState": true
+  }
+ },
+ "hid": [
+  {
+   "Path": "\\\\?\\hid#vid_04f3&pid_026f&mi_00#8&258d9188&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+   "VID": 1267,
+   "PID": 623,
+   "UsagePage": 1,
+   "Usage": 2,
+   "InLen": 8,
+   "FeatLen": 0,
+   "mode": "dongle",
+   "status": false,
+   "command": false,
+   "reader": {
+    "opened": false,
+    "reports": 0,
+    "polled": 0,
+    "pollFails": 0,
+    "last": "0001-01-01T00:00:00Z"
+   }
+  },
+  {
+   "Path": "\\\\?\\hid#vid_04f3&pid_026f&mi_01&col01#8&125d754a&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}\\kbd",
+   "VID": 1267,
+   "PID": 623,
+   "UsagePage": 1,
+   "Usage": 6,
+   "InLen": 8,
+   "FeatLen": 0,
+   "mode": "dongle",
+   "status": false,
+   "command": false,
+   "reader": {
+    "opened": false,
+    "reports": 0,
+    "polled": 0,
+    "pollFails": 0,
+    "last": "0001-01-01T00:00:00Z"
+   }
+  },
+  {
+   "Path": "\\\\?\\hid#vid_04f3&pid_026f&mi_01&col02#8&125d754a&0&0001#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+   "VID": 1267,
+   "PID": 623,
+   "UsagePage": 12,
+   "Usage": 1,
+   "InLen": 3,
+   "FeatLen": 0,
+   "mode": "dongle",
+   "status": false,
+   "command": false,
+   "reader": {
+    "opened": false,
+    "reports": 0,
+    "polled": 0,
+    "pollFails": 0,
+    "last": "0001-01-01T00:00:00Z"
+   }
+  },
+  {
+   "Path": "\\\\?\\hid#vid_04f3&pid_026f&mi_01&col03#8&125d754a&0&0002#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+   "VID": 1267,
+   "PID": 623,
+   "UsagePage": 1,
+   "Usage": 128,
+   "InLen": 2,
+   "FeatLen": 0,
+   "mode": "dongle",
+   "status": false,
+   "command": false,
+   "reader": {
+    "opened": false,
+    "reports": 0,
+    "polled": 0,
+    "pollFails": 0,
+    "last": "0001-01-01T00:00:00Z"
+   }
+  },
+  {
+   "Path": "\\\\?\\hid#vid_04f3&pid_026f&mi_01&col04#8&125d754a&0&0003#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+   "VID": 1267,
+   "PID": 623,
+   "UsagePage": 10,
+   "Usage": 0,
+   "InLen": 32,
+   "FeatLen": 0,
+   "mode": "dongle",
+   "status": true,
+   "command": false,
+   "reader": {
+    "opened": true,
+    "reports": 76,
+    "polled": 0,
+    "pollFails": 1,
+    "last": "2026-11-02T01:14:29.6228443+04:00"
+   }
+  },
+  {
+   "Path": "\\\\?\\hid#vid_04f3&pid_026f&mi_01&col05#8&125d754a&0&0004#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+   "VID": 1267,
+   "PID": 623,
+   "UsagePage": 10,
+   "Usage": 0,
+   "InLen": 0,
+   "FeatLen": 136,
+   "mode": "dongle",
+   "status": false,
+   "command": true,
+   "reader": {
+    "opened": false,
+    "reports": 0,
+    "polled": 0,
+    "pollFails": 0,
+    "last": "0001-01-01T00:00:00Z"
+   }
+  },
+  {
+   "Path": "\\\\?\\hid#{00001812-0000-1000-8000-00805f9b34fb}_dev_vid&0204f3_pid&026d_rev&0109_c98c17ced7ce&col01#b&317b5552&0&0000#{4d1e55b2-f16f-11cf-88cb-001111000030}\\kbd",
+   "VID": 1267,
+   "PID": 621,
+   "UsagePage": 1,
+   "Usage": 6,
+   "InLen": 9,
+   "FeatLen": 0,
+   "mode": "bluetooth",
+   "status": false,
+   "command": false,
+   "reader": {
+    "opened": false,
+    "reports": 0,
+    "polled": 0,
+    "pollFails": 0,
+    "last": "0001-01-01T00:00:00Z"
+   }
+  },
+  {
+   "Path": "\\\\?\\hid#{00001812-0000-1000-8000-00805f9b34fb}_dev_vid&0204f3_pid&026d_rev&0109_c98c17ced7ce&col02#b&317b5552&0&0001#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+   "VID": 1267,
+   "PID": 621,
+   "UsagePage": 1,
+   "Usage": 2,
+   "InLen": 8,
+   "FeatLen": 0,
+   "mode": "bluetooth",
+   "status": false,
+   "command": false,
+   "reader": {
+    "opened": false,
+    "reports": 0,
+    "polled": 0,
+    "pollFails": 0,
+    "last": "0001-01-01T00:00:00Z"
+   }
+  },
+  {
+   "Path": "\\\\?\\hid#{00001812-0000-1000-8000-00805f9b34fb}_dev_vid&0204f3_pid&026d_rev&0109_c98c17ced7ce&col03#b&317b5552&0&0002#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+   "VID": 1267,
+   "PID": 621,
+   "UsagePage": 12,
+   "Usage": 1,
+   "InLen": 3,
+   "FeatLen": 0,
+   "mode": "bluetooth",
+   "status": false,
+   "command": false,
+   "reader": {
+    "opened": false,
+    "reports": 0,
+    "polled": 0,
+    "pollFails": 0,
+    "last": "0001-01-01T00:00:00Z"
+   }
+  },
+  {
+   "Path": "\\\\?\\hid#{00001812-0000-1000-8000-00805f9b34fb}_dev_vid&0204f3_pid&026d_rev&0109_c98c17ced7ce&col04#b&317b5552&0&0003#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+   "VID": 1267,
+   "PID": 621,
+   "UsagePage": 1,
+   "Usage": 128,
+   "InLen": 2,
+   "FeatLen": 0,
+   "mode": "bluetooth",
+   "status": false,
+   "command": false,
+   "reader": {
+    "opened": false,
+    "reports": 0,
+    "polled": 0,
+    "pollFails": 0,
+    "last": "0001-01-01T00:00:00Z"
+   }
+  },
+  {
+   "Path": "\\\\?\\hid#{00001812-0000-1000-8000-00805f9b34fb}_dev_vid&0204f3_pid&026d_rev&0109_c98c17ced7ce&col05#b&317b5552&0&0004#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+   "VID": 1267,
+   "PID": 621,
+   "UsagePage": 10,
+   "Usage": 0,
+   "InLen": 32,
+   "FeatLen": 0,
+   "mode": "bluetooth",
+   "status": true,
+   "command": false,
+   "reader": {
+    "opened": true,
+    "reports": 1,
+    "polled": 0,
+    "pollFails": 2,
+    "last": "2026-11-02T01:11:14.1186524+04:00"
+   }
+  },
+  {
+   "Path": "\\\\?\\hid#{00001812-0000-1000-8000-00805f9b34fb}_dev_vid&0204f3_pid&026d_rev&0109_c98c17ced7ce&col06#b&317b5552&0&0005#{4d1e55b2-f16f-11cf-88cb-001111000030}",
+   "VID": 1267,
+   "PID": 621,
+   "UsagePage": 10,
+   "Usage": 0,
+   "InLen": 0,
+   "FeatLen": 136,
+   "mode": "bluetooth",
+   "status": false,
+   "command": true,
+   "reader": {
+    "opened": false,
+    "reports": 0,
+    "polled": 0,
+    "pollFails": 0,
+    "last": "0001-01-01T00:00:00Z"
+   }
+  }
+ ]
+}

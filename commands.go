@@ -136,3 +136,21 @@ func deviceCommands(s Settings) []devCommand {
 func debounceSignature(v int) string {
 	return signature(devCommand{"debounce", 1, func(seq func() byte) [][]byte { return [][]byte{EncodeDebounce(v, seq)} }})
 }
+
+// plausibleStatus: whether a report (ID at [0]) looks like the status layout
+// of input report 4 — used for feature report 5, which the vendor tools poll
+// as a "health" report and whose layout is not documented.
+func plausibleStatus(d []byte) bool {
+	if len(d) < 10 {
+		return false
+	}
+	link, level, rate, battery, charge, sensor := d[1], d[2], d[3], d[4], d[5], d[9]
+	if link > 1 || level > 7 || battery > 100 || charge > 2 {
+		return false
+	}
+	if !validRate(int(rate)) {
+		return false
+	}
+	_, known := sensors[int(sensor)]
+	return known
+}

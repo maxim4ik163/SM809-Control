@@ -85,5 +85,11 @@ type readerStats struct {
 	Last      time.Time `json:"last"`
 }
 
+type atomicBool struct{ v bool }
+
+func (a *atomicBool) Store(b bool) { a.v = b }
+
+var commandsActive atomicBool
+
 func statsSnapshot() map[string]readerStats { return map[string]readerStats{} }
 func isStatusCollection(d hidDevice) bool    { return d.UsagePage == vendorUsagePage && d.InLen >= 10 }
