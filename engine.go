@@ -287,7 +287,7 @@ func (e *Engine) diff(p *Profile) []string {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	var out []string
-	for _, c := range append(buildCommands(deviceProfile(p, st.data.Settings.SoftBindings), st.macro, sensor), deviceCommands(st.data.Settings)...) {
+	for _, c := range append(buildCommands(deviceProfile(p, st.data.Settings), st.macro, sensor), deviceCommands(st.data.Settings)...) {
 		if !st.state.Synced || st.state.Sent[c.key] != signature(c) {
 			out = append(out, c.key)
 		}
@@ -469,11 +469,14 @@ func (e *Engine) run(j *applyJob) error {
 	pc := *p
 	synced := st.state.Synced
 	devCmds := deviceCommands(st.data.Settings)
-	soft := st.data.Settings.SoftBindings && !j.plain
+	devSet := st.data.Settings
+	if j.plain {
+		devSet.ButtonMode = ModeHardware // exit with "restore": the hardware layout
+	}
 	st.mu.Unlock()
 
 	sensor := e.sensorType()
-	cmds := buildCommands(deviceProfile(&pc, soft), func(id string) *Macro {
+	cmds := buildCommands(deviceProfile(&pc, devSet), func(id string) *Macro {
 		st.mu.Lock()
 		defer st.mu.Unlock()
 		if m := st.macro(id); m != nil {
@@ -558,11 +561,7 @@ func (e *Engine) run(j *applyJob) error {
 		st.state.Sent[c.key] = signature(c)
 		st.state.FlashWrites += c.writes
 		if c.key == "keys" {
-			var m [softSlots]bool
-			if soft {
-				m = carriedMask(&pc)
-			}
-			st.setCarrier(m)
+			st.setCarrier(carriedMask(devSet))
 		}
 		st.mu.Unlock()
 	}

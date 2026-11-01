@@ -15,7 +15,7 @@ import (
 	"unsafe"
 )
 
-const appVersion = "1.5.0-beta2"
+const appVersion = "2.0.0"
 
 const projectURL = "https://github.com/maxim4ik163/SM809-Control"
 
@@ -470,7 +470,7 @@ func main() {
 	uiMu.Unlock()
 	soft.stop()
 	store.mu.Lock()
-	restore := store.data.Settings.SoftBindings && store.data.Soft.RestoreOnExit && store.state.Carrier != [softSlots]bool{}
+	restore := softMode(store.data.Settings) && store.data.Settings.RestoreOnExit && store.state.Carrier != [softSlots]bool{}
 	store.mu.Unlock()
 	if restore {
 		// one flash write: the buttons work without the app until the next start

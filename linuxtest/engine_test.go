@@ -5,8 +5,9 @@ package main
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -343,149 +344,179 @@ func TestDebounce(t *testing.T) {
 	}
 }
 
-// Software bindings: turning the mode on writes only the keys command (the
-// carrier layout), editing bindings writes nothing, turning it off writes the
-// normal layout back.
-func TestSoftBindings(t *testing.T) {
+// Button modes: switching writes only the keys command, software actions are
+// never written, the left click is guarded, secrets are sealed.
+func TestButtonModes(t *testing.T) {
 	st, e := setup(t)
 	a, err := newAPI(e, st, func(f func()) { f() })
 	if err != nil {
 		t.Fatal(err)
 	}
+	protectSecret = func(s string) (string, error) { return "enc:" + s, nil }
+	defer func() { protectSecret = nil }()
 	var carrierSeen [][softSlots]bool
 	onCarrierChange = func(m [softSlots]bool) { carrierSeen = append(carrierSeen, m) }
 	defer func() { onCarrierChange = nil }()
 	def := st.data.Settings.DefaultProfile
+	if st.data.Settings.ButtonMode != "" || !st.data.Settings.KeyRepeat {
+		t.Fatal("fresh settings")
+	}
 	e.handleReport(report(true, 1, 1, 9))
 	e.Apply(def, false, "t", false, true)
 	takeSent()
-	if st.state.Carrier != ([softSlots]bool{}) {
-		t.Fatal("carrier before soft mode")
-	}
 
 	// a pending profile change (lighting) must not be written by the mode switch
 	st.profile(def).Lighting = 3
-	if c, m := post(t, a, "soft/enable", map[string]bool{"on": true}); c != 200 || m["ok"] != true {
-		t.Fatalf("enable: %d %v", c, m)
+	if c, m := post(t, a, "buttons/mode", map[string]string{"mode": "software"}); c != 200 || m["ok"] != true {
+		t.Fatalf("software: %d %v", c, m)
 	}
 	s := takeSent()
-	if cmds(s) != "1,1" {
-		t.Fatalf("enable sent %s", cmds(s))
+	if cmds(s) != "1,1" || s[0][4+21] != 112 || s[0][4+23] != 104 { // button 1 (8th entry of the first packet) = F13
+		t.Fatalf("mode switch sent %s % X", cmds(s), s)
 	}
-	if s[0][4+21] != 112 || s[0][4+23] != 104 { // button 1 (8th entry of the first packet) = F13
-		t.Fatalf("carrier packet % X", s[0])
+	want := carriedMask(st.data.Settings)
+	if st.data.Settings.HWButtons != defaultHW(st.profile(def)) || st.state.Carrier != want || len(carrierSeen) == 0 || carrierSeen[len(carrierSeen)-1] != want {
+		t.Fatalf("hw %v carrier %v", st.data.Settings.HWButtons, st.state.Carrier)
 	}
-	want := carriedMask(st.profile(def))
-	if st.state.Carrier != want || len(carrierSeen) == 0 || carrierSeen[len(carrierSeen)-1] != want {
-		t.Fatalf("carrier state %v", st.state.Carrier)
-	}
-
-	// bindings change: no write
-	sd := defaultSoftData()
-	sd.Global["b4"] = SoftBinding{Kind: SoftKeys, Keys: "Ctrl+Win+Right"}
-	sd.Profiles = append(sd.Profiles, &SoftProfile{Name: "Game", Exes: []string{"game.exe"}, Enabled: true,
-		Bindings: map[string]SoftBinding{"b5": {Kind: SoftMouse, Button: "middle"}}})
-	if c, m := post(t, a, "soft/save", map[string]any{"soft": sd}); c != 200 {
-		t.Fatalf("soft/save %v", m)
-	}
-	if c, _ := post(t, a, "soft/save", map[string]any{"soft": map[string]any{"global": map[string]any{"b1": map[string]string{"kind": "keys", "keys": "Nope"}}}}); c != 400 {
-		t.Fatal("invalid binding accepted")
+	if st.profile(def).Soft[0] != (SoftBinding{Kind: SoftKeys, Keys: "Win+D"}) {
+		t.Fatalf("soft actions not filled: %+v", st.profile(def).Soft[0])
 	}
 	if d := e.diff(st.profile(def)); len(d) != 1 || d[0] != "light" {
-		t.Fatalf("pending after enable: %v", d)
+		t.Fatalf("pending after the switch: %v", d)
 	}
 	st.profile(def).Lighting = 9
-	e.Apply(def, false, "t", false, true)
-	if len(takeSent()) != 0 || st.data.Soft.Global["b4"].Keys != "Ctrl+Win+Right" {
-		t.Fatal("binding change wrote the mouse")
-	}
-	// forward → back on button 4 of the mouse profile: carried → carried, no write
+
+	// software actions and hardware actions of software buttons: no write
 	p := *st.profile(def)
+	p.Soft[3] = SoftBinding{Kind: SoftText, Text: "s3cret", Secret: true, After: "Enter"}
 	p.Buttons[3] = ButtonAssign{Kind: "mouse", Code: [3]int{16, 8, 0}}
 	if c, m := post(t, a, "profile/save", p); c != 200 {
 		t.Fatal(m)
 	}
+	if b := st.profile(def).Soft[3]; b.Text != "" || b.Enc != "enc:s3cret" {
+		t.Fatalf("secret stored as %+v", b)
+	}
+	_, all := post(t, a, "all", nil)
+	for _, pr := range all["data"].(map[string]any)["profiles"].([]any) {
+		sb := pr.(map[string]any)["soft"].([]any)[3].(map[string]any)
+		if _, has := sb["text"]; has {
+			t.Fatalf("secret text sent to the UI: %v", sb)
+		}
+	}
 	if len(e.diff(st.profile(def))) != 0 {
-		t.Fatal("pending changes after a carried → carried edit")
+		t.Fatal("software change pending a write")
 	}
-	// the settings form must not switch the mode off
+	// unknown macro, broken action
+	q := *st.profile(def)
+	q.Soft[1] = SoftBinding{Kind: SoftMacro, MacroID: "nope"}
+	if c, _ := post(t, a, "profile/save", q); c != 400 {
+		t.Fatal("unknown macro accepted")
+	}
+	q.Soft[1] = SoftBinding{Kind: SoftKeys, Keys: "Nope"}
+	if c, _ := post(t, a, "profile/save", q); c != 400 {
+		t.Fatal("broken combo accepted")
+	}
+	// left click only on a software button → refused
+	q = *st.profile(def)
+	q.Buttons[2] = ButtonAssign{Kind: "mouse", Code: [3]int{16, 1, 0}}
+	q.Buttons[11] = ButtonAssign{Kind: "mouse", Code: [3]int{16, 2, 0}}
+	if c, _ := post(t, a, "profile/save", q); c != 400 {
+		t.Fatal("profile without a hardware left click accepted")
+	}
+	// the settings form does not change the mode
 	set := st.data.Settings
-	set.SoftBindings = false
-	if c, _ := post(t, a, "settings", map[string]any{"settings": set}); c != 200 || !st.data.Settings.SoftBindings {
-		t.Fatal("settings save changed soft mode")
+	set.ButtonMode, set.HWButtons = ModeHardware, [softSlots]bool{true}
+	if c, _ := post(t, a, "settings", map[string]any{"settings": set}); c != 200 || !softMode(st.data.Settings) || st.data.Settings.HWButtons == set.HWButtons {
+		t.Fatal("settings save changed the button mode")
 	}
-	// state view reports the carrier
-	c, m := post(t, a, "state", nil)
-	if c != 200 || m["soft"].(map[string]any)["enabled"] != true {
+	if c, m := post(t, a, "state", nil); c != 200 || m["soft"].(map[string]any)["enabled"] != true {
 		t.Fatalf("state: %v", m["soft"])
 	}
 
-	// exit with "restore": normal layout written, state follows
+	// button 2 becomes a hardware button: keys written
+	hw := st.data.Settings.HWButtons
+	hw[1] = true
+	if c, m := post(t, a, "buttons/hw", map[string]any{"hw": hw}); c != 200 || m["ok"] != true {
+		t.Fatal(m)
+	}
+	want = carriedMask(st.data.Settings)
+	if cmds(takeSent()) != "1,1" || st.state.Carrier != want || want[1] {
+		t.Fatal("hw change")
+	}
+	// back to software: its action is still there
+	hw[1] = false
+	post(t, a, "buttons/hw", map[string]any{"hw": hw})
+	takeSent()
+	if st.profile(def).Soft[1].Keys != "2" {
+		t.Fatal("software action lost")
+	}
+
+	// exit with "restore": hardware layout, then the carrier again
 	if err := e.ApplyPlain(def, 2*time.Second); err != nil {
 		t.Fatal(err)
 	}
 	if s := takeSent(); cmds(s) != "1,1" || st.state.Carrier != ([softSlots]bool{}) {
-		t.Fatalf("plain apply sent %s, carrier %v", cmds(s), st.state.Carrier)
+		t.Fatalf("plain apply sent %s", cmds(s))
 	}
-	// next start in soft mode: carrier again
-	e.Apply(def, false, "start", false, true)
-	if cmds(takeSent()) != "1,1" || st.state.Carrier != want {
+	e.ApplyKeys(def, "start", true)
+	if cmds(takeSent()) != "1,1" || st.state.Carrier != carriedMask(st.data.Settings) {
 		t.Fatal("carrier not rewritten")
 	}
 
-	if c, m := post(t, a, "soft/enable", map[string]bool{"on": false}); c != 200 || m["ok"] != true {
-		t.Fatalf("disable: %v", m)
+	// hardware mode: normal layout, software actions kept
+	if c, m := post(t, a, "buttons/mode", map[string]string{"mode": "hardware"}); c != 200 || m["ok"] != true {
+		t.Fatal(m)
 	}
-	if cmds(takeSent()) != "1,1" || st.state.Carrier != ([softSlots]bool{}) || st.data.Settings.SoftBindings {
-		t.Fatal("disable")
+	if cmds(takeSent()) != "1,1" || st.state.Carrier != ([softSlots]bool{}) || st.profile(def).Soft[3].Enc == "" {
+		t.Fatal("hardware mode")
 	}
-	// mouse offline: the setting is kept, the write waits for the mouse
+	if c, _ := post(t, a, "buttons/mode", map[string]string{"mode": "x"}); c != 400 {
+		t.Fatal("bad mode accepted")
+	}
+	// mouse offline: the mode is kept, the write waits for the mouse
 	e.handleReport(report(false, 1, 1, 9))
-	if c, m := post(t, a, "soft/enable", map[string]bool{"on": true}); c != 200 || m["ok"] != false || !st.data.Settings.SoftBindings {
-		t.Fatalf("offline enable: %v", m)
+	if c, m := post(t, a, "buttons/mode", map[string]string{"mode": "software"}); c != 200 || m["ok"] != false || !softMode(st.data.Settings) {
+		t.Fatalf("offline: %v", m)
 	}
 	e.handleReport(report(true, 1, 1, 9))
 	waitIdle(e)
-	if cmds(takeSent()) != "1,1" || st.state.Carrier != want {
+	if cmds(takeSent()) != "1,1" || st.state.Carrier != carriedMask(st.data.Settings) {
 		t.Fatal("pending carrier write")
 	}
-}
+	if !st.data.Settings.HWButtons[9] || st.data.Settings.HWButtons[1] {
+		t.Fatal("the hardware/software split must survive mode changes")
+	}
 
-func TestSoftActionsAPI(t *testing.T) {
-	st, e := setup(t)
-	a, _ := newAPI(e, st, func(f func()) { f() })
-	protectSecret = func(s string) (string, error) { return "enc:" + s, nil }
-	defer func() { protectSecret = nil }()
+	// a macro used by a software button cannot be deleted
 	c, m := post(t, a, "macro/save", Macro{Name: "a", ExecuteType: 1, Events: []MacroEvent{{Type: "keydown", Code: 4}, {Type: "keyup", Code: 4}}})
 	if c != 200 {
 		t.Fatal(m)
 	}
-	mid := m["id"].(string)
-	sd := defaultSoftData()
-	sd.Global["b1"] = SoftBinding{Kind: SoftMacro, MacroID: "nope"}
-	if c, _ := post(t, a, "soft/save", map[string]any{"soft": sd}); c != 400 {
-		t.Fatal("unknown macro accepted")
-	}
-	sd.Global["b1"] = SoftBinding{Kind: SoftMacro, MacroID: mid}
-	sd.Global["b2"] = SoftBinding{Kind: SoftText, Text: "s3cret", Secret: true, After: "Enter"}
-	sd.Global["b3"] = SoftBinding{Kind: SoftRun, Path: `%WINDIR%\notepad.exe`}
-	if c, m := post(t, a, "soft/save", map[string]any{"soft": sd}); c != 200 {
+	q = *st.profile(def)
+	q.Soft[4] = SoftBinding{Kind: SoftMacro, MacroID: m["id"].(string)}
+	if c, m := post(t, a, "profile/save", q); c != 200 {
 		t.Fatal(m)
 	}
-	b := st.data.Soft.Global["b2"]
-	if b.Text != "" || b.Enc != "enc:s3cret" {
-		t.Fatalf("secret stored as %+v", b)
+	if c, _ := post(t, a, "macro/delete", map[string]string{"id": m["id"].(string)}); c != 400 {
+		t.Fatal("macro used by a software button deleted")
 	}
-	// the UI gets the data back without the plain text
-	_, all := post(t, a, "all", nil)
-	if strings.Contains(fmt.Sprint(all), "s3cret\"") || strings.Contains(fmt.Sprint(all["data"].(map[string]any)["soft"]), "text:s3cret") {
-		t.Fatal("secret leaked to the UI")
+	// first choice "hardware" writes nothing
+	st2, e2 := setup(t)
+	a2, _ := newAPI(e2, st2, func(f func()) { f() })
+	e2.handleReport(report(true, 1, 1, 9))
+	e2.Apply(st2.data.Settings.DefaultProfile, false, "t", false, true)
+	takeSent()
+	if c, _ := post(t, a2, "buttons/mode", map[string]string{"mode": "hardware"}); c != 200 || len(takeSent()) != 0 || st2.data.Settings.ButtonMode != ModeHardware {
+		t.Fatal("first choice hardware")
 	}
-	// saving again unchanged keeps the sealed secret
-	if c, m := post(t, a, "soft/save", map[string]any{"soft": st.data.Soft}); c != 200 || st.data.Soft.Global["b2"].Enc != "enc:s3cret" {
-		t.Fatal(m)
-	}
-	if c, _ := post(t, a, "macro/delete", map[string]string{"id": mid}); c != 400 {
-		t.Fatal("macro used by a soft button deleted")
+}
+
+// 1.x data (version 1): key repeat on, mode not chosen.
+func TestLoad1x(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "data.json"), []byte(`{"version":1,"profiles":[{"id":"p1","name":"A","buttons":[],"dpiCount":1,"dpiLevels":[800],"pollRate":1,"lod":1,"sleepMin":5}],"settings":{"defaultProfile":"p1","baseProfile":"p1"}}`), 0644)
+	st := loadStore(dir)
+	if st.data.Version != dataVersion || !st.data.Settings.KeyRepeat || st.data.Settings.ButtonMode != "" || st.data.Soft != nil {
+		t.Fatalf("%+v", st.data.Settings)
 	}
 }

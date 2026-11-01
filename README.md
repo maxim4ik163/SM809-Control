@@ -10,12 +10,16 @@ An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gamin
 
 ## Features
 
+- **Two button modes (2.0)** — chosen on first start, switchable any time:
+  - *Hardware* — everything is stored in the mouse, works without the app on any PC.
+  - *Software* — buttons 1–11 are handled by the app: their actions follow the program in front **instantly and without writing the mouse**; they can press any combination (Ctrl+Win+→), **type a text or a password** (Unicode or real key presses in a chosen layout, then Enter/Tab…; passwords are encrypted with Windows DPAPI), **start a program** or play a **macro without firmware limits** (with cursor moves). The mouse is written once (the buttons send F13–F23, keys no keyboard has). Any of buttons 1–11 can be marked as a *hardware button* to keep rapid fire, DPI or a firmware macro; buttons 12–16 are always hardware. Software buttons do nothing while the app is not running (optionally the hardware layout is restored on exit).
 - **Buttons** — assign any of the 15 remappable buttons: mouse buttons, key or key combination (Ctrl/Shift/Alt/Win), media keys, editing shortcuts, DPI +/−/cycle, DPI lock (sniper), rapid fire with custom interval and count, disable, lighting toggle, macro. The main left button is locked so the mouse can never lose its click.
 - **DPI** — 1 to 6 levels, any value per level (limits and step follow the sensor, e.g. PAW3311: 200–24000 in steps of 100), a colour per level from the standard palette or any custom colour, start level.
 - **Lighting** — all 11 modes supported by the firmware.
 - **Performance** — polling rate (the list follows what the current connection supports), lift-off distance (LOD 1/2 mm — the vendor Windows app lacks it), sleep timer, wake on movement, lighting off while moving, angle snapping, Motion Sync, ripple control.
 - **Macros** — recorder (keys and mouse buttons, real or fixed delays) and a manual editor (press / release / delay, type a whole text, reorder, edit delays), three run modes like the vendor app, memory usage meter, warning about keys left pressed. Encoding matches the vendor driver exactly. (Cursor moves inside macros are not performed by the stock firmware, so the editor disables them.)
 - **Profiles** — unlimited, stored on the PC; only the current one is written to the mouse, and **only the settings that differ** (to spare the mouse flash memory).
+- **Per-program buttons** — in software mode a rule "program → profile" switches the software buttons as soon as that program's window is in front, with no flash write.
 - **Per-game profiles** (opt-in) — a profile is applied when an `.exe` starts and reverted when it exits, with an optional on-screen popup per program. Off by default, enabled only after a warning about flash wear.
 - **On-screen popups** for DPI and profile changes with a fully customisable look (position, size, colours, font, timing).
 - **Connection indicator** — wired / 2.4 GHz dongle / Bluetooth 1 / Bluetooth 2, battery and charging state.
@@ -99,6 +103,8 @@ sh linuxtest/run.sh     # engine/API logic with HID stubbed out (Linux/macOS)
 | `protocol.go` | HID command encoders (keys, DPI, colours, polling, LOD, power, sensor, lighting, macros, reset) |
 | `hid.go` | HID enumeration, status reader (input report 4), command channel (feature report 6 with ack/retry) |
 | `engine.go` | Device state, diff-only apply queue, per-game profile stack, notifications |
+| `softbind.go`, `softkeys.go` | Button modes: carrier layout, software actions, migration |
+| `soft_windows.go`, `soft_actions_windows.go` | Keyboard hook, SendInput, foreground window, text input, macros, starting programs, DPAPI |
 | `store.go` | Data model and persistence |
 | `battery.go` | Battery history and forecast |
 | `api.go` | Local HTTP API (127.0.0.1, random port, token) + SSE for the UI |
@@ -120,12 +126,16 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md) — status report, all commands, button
 
 **Возможности**
 
+- **Два режима кнопок (2.0)** — выбирается при первом запуске, меняется в любой момент:
+  - *аппаратный* — всё хранится в мыши, работает без программы на любом компьютере;
+  - *программный* — кнопки 1–11 обрабатывает программа: их действия переключаются по активному окну **мгновенно и без записи в мышь**; можно назначить любое сочетание (Ctrl+Win+→), **ввод текста или пароля** (символами или нажатиями клавиш в выбранной раскладке, затем Enter/Tab…; пароли шифруются средствами Windows), **запуск программы**, **макрос без ограничений прошивки** (с движением курсора). Мышь записывается один раз (кнопки шлют F13–F23 — клавиши, которых нет на клавиатуре). Любую из кнопок 1–11 можно отметить «аппаратной», чтобы оставить огонь, DPI или макрос прошивки; кнопки 12–16 всегда аппаратные. Без запущенной программы программные кнопки молчат (по желанию при выходе возвращается аппаратная раскладка).
 - **Кнопки:** любая функция на 15 переназначаемых кнопок — кнопки мыши, клавиша или сочетание, мультимедиа, правка, DPI, фиксация DPI, «огонь», отключение, подсветка, макрос. Основная левая кнопка заблокирована.
 - **DPI:** 1–6 уровней с любыми значениями, цвет каждого уровня из стандартной палитры или любой свой, стартовый уровень.
 - **Подсветка:** все 11 режимов прошивки.
 - **Производительность:** частота опроса, высота отрыва LOD (её нет в фирменной программе), сон, пробуждение движением, angle snapping, Motion Sync, Ripple.
 - **Макросы:** запись и ручной редактор, ввод целого текста, три режима повтора, индикатор памяти. Кодирование совпадает с официальным драйвером. Сдвиг курсора в макросах заводская прошивка не выполняет, поэтому он отключён.
 - **Профили:** без ограничения количества, хранятся на компьютере. В мышь пишется только то, что отличается.
+- **Кнопки по программам:** в программном режиме правило «программа → профиль» переключает программные кнопки, как только окно программы становится активным, без записи в мышь.
 - **Переключение по играм:** профиль включается при запуске exe и возвращается при выходе. По умолчанию выключено и включается только после предупреждения об износе флеш-памяти.
 - **Всплывающие окна** DPI и профиля с настройкой внешнего вида.
 - **Индикатор подключения:** провод, донгл, BT1, BT2; заряд.

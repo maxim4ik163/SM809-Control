@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/hex"
-	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -11,78 +10,6 @@ import (
 // computed independently from docs/PROTOCOL.md (cmd 1, sub 2 / 18, button
 // order 11,12,13,14,15,9,10,0,1 | 2,3,4,5,8,6,7, pad FF to 30 bytes, checksum
 // (6 + Σ) & FF inserted at index 3), seq 0.
-func TestCarrierPackets(t *testing.T) {
-	p := newProfile("t", 0)
-	want := [16]bool{}
-	for i := 0; i < 11; i++ {
-		want[i] = i != 9 // button 10 = rapid fire stays on the mouse
-	}
-	m := carriedMask(p)
-	for i := 0; i < softSlots; i++ {
-		if m[i] != want[i] {
-			t.Fatalf("carried[%d] = %v, want %v", i, m[i], want[i])
-		}
-	}
-	c := carrierProfile(p)
-	var codes [numButtons]KeyCode
-	for i, b := range c.Buttons {
-		codes[i] = KeyCode{byte(b.Code[0]), byte(b.Code[1]), byte(b.Code[2])}
-	}
-	pk := EncodeKeys(codes, func() byte { return 0 })
-	exp := []string{
-		"0100029a100100100200100400400200400300301002700072700068700069",
-		"0100121e70006a70006b70006c70006d70007070006e70006fffffffffffff",
-	}
-	for i := range exp {
-		if got := hex.EncodeToString(pk[i]); got != exp[i] {
-			t.Errorf("packet %d:\n got %s\nwant %s", i, got, exp[i])
-		}
-	}
-	// the source profile is untouched
-	if p.Buttons[0].Code != [3]int{112, 8, 7} {
-		t.Fatal("carrierProfile changed its argument")
-	}
-	if carrierInMemory(c) != m {
-		t.Fatal("carrierInMemory does not recognise the carrier layout")
-	}
-	if carrierInMemory(p) != [softSlots]bool{} {
-		t.Fatal("normal layout seen as carrier")
-	}
-	// buttons 12..16 never change
-	for i := 11; i < 16; i++ {
-		if c.Buttons[i] != p.Buttons[i] {
-			t.Fatalf("button %d changed", i+1)
-		}
-	}
-}
-
-func TestDeviceProfileSignature(t *testing.T) {
-	p := newProfile("t", 0)
-	sig := func(soft bool) map[string]string {
-		m := map[string]string{}
-		for _, c := range buildCommands(deviceProfile(p, soft), func(string) *Macro { return nil }, 0x11) {
-			m[c.key] = signature(c)
-		}
-		return m
-	}
-	a, b := sig(false), sig(true)
-	for k := range a {
-		if (a[k] != b[k]) != (k == "keys") {
-			t.Errorf("%s: soft mode should change only the keys command", k)
-		}
-	}
-	// a remap between two carried actions does not change what is written
-	p.Buttons[3] = ButtonAssign{Kind: "mouse", Code: [3]int{16, 8, 0}} // forward → back
-	if sig(true)["keys"] != b["keys"] {
-		t.Error("carried → carried change needs no write in soft mode")
-	}
-	// leaving the carrier (a macro) does
-	p.Buttons[3] = ButtonAssign{Kind: "macro", Code: [3]int{144, 0, 0}, MacroID: "m"}
-	if sig(true)["keys"] == b["keys"] {
-		t.Error("carried → firmware-only change must be written")
-	}
-}
-
 func TestFwOutput(t *testing.T) {
 	cases := []struct {
 		code [3]int
@@ -162,101 +89,6 @@ func TestHIDUsageCoverage(t *testing.T) {
 	}
 }
 
-func TestResolveSoft(t *testing.T) {
-	sd := defaultSoftData()
-	sd.Global["b1"] = SoftBinding{Kind: SoftKeys, Keys: "Ctrl+C"}
-	sd.Global["b2"] = SoftBinding{Kind: SoftDisable, Force: true}
-	p := &SoftProfile{Name: "cad", Exes: []string{"C:\\Prog\\ACAD.EXE"}, Enabled: true, Bindings: map[string]SoftBinding{
-		"b1":  {Kind: SoftMouse, Button: "middle"},
-		"b2":  {Kind: SoftKeys, Keys: "Esc"},
-		"b3":  {Kind: SoftKeys, Keys: "z+ctrl", Force: true},
-		"b99": {Kind: SoftDisable},
-	}}
-	sd.Profiles = append(sd.Profiles, p)
-	if err := validateSoftData(sd); err != nil {
-		t.Fatal(err)
-	}
-	if p.Exes[0] != "acad.exe" || p.Bindings["b3"].Keys != "Ctrl+Z" || p.Bindings["b3"].Force {
-		t.Fatalf("not normalised: %+v", p)
-	}
-	if _, ok := p.Bindings["b99"]; ok {
-		t.Fatal("invalid slot kept")
-	}
-	ap := activeSoftProfile(sd, "acad.exe")
-	if ap != p || activeSoftProfile(sd, "notepad.exe") != nil {
-		t.Fatal("activeSoftProfile")
-	}
-	mouseP := newProfile("m", 0)
-	out := func(prof *SoftProfile, i int) string {
-		o, ok := softOutput(sd, prof, mouseP, i, nil)
-		if !ok {
-			return "-"
-		}
-		switch o.Kind {
-		case SoftKeys:
-			return o.Combo.String()
-		case SoftMouse:
-			return "mouse:" + o.Button
-		}
-		return o.Kind
-	}
-	checks := []struct {
-		prof *SoftProfile
-		i    int
-		want string
-	}{
-		{nil, 0, "Ctrl+C"},        // global
-		{ap, 0, "mouse:middle"},   // profile over global
-		{ap, 1, "disable"},        // forced global over profile
-		{ap, 2, "Ctrl+Z"},         // profile only
-		{nil, 2, "1"},             // default = mouse profile (button 3 = "1")
-		{nil, 3, "mouse:forward"}, // default
-		{nil, 9, "-"},             // rapid fire: firmware only, nothing to do
-	}
-	for _, c := range checks {
-		if got := out(c.prof, c.i); got != c.want {
-			t.Errorf("button %d: got %s, want %s", c.i+1, got, c.want)
-		}
-	}
-	// a disabled profile is not active
-	p.Enabled = false
-	if activeSoftProfile(sd, "acad.exe") != nil {
-		t.Fatal("disabled profile active")
-	}
-}
-
-func TestValidateSoftData(t *testing.T) {
-	sd := &SoftData{}
-	if err := validateSoftData(sd); err != nil {
-		t.Fatal(err)
-	}
-	b, _ := json.Marshal(sd)
-	if strings.Contains(string(b), "null") {
-		t.Fatalf("null in JSON: %s", b) // the UI breaks on null lists
-	}
-	bad := []*SoftData{
-		{Global: map[string]SoftBinding{"b1": {Kind: SoftKeys, Keys: "Ctrl+Nope"}}},
-		{Global: map[string]SoftBinding{"b1": {Kind: SoftMouse, Button: "side"}}},
-		{Global: map[string]SoftBinding{"b1": {Kind: "macro"}}},
-		{Profiles: []*SoftProfile{{Name: "x", Exes: []string{"notepad"}}}},
-		{Profiles: []*SoftProfile{{Name: " "}}},
-		{Profiles: []*SoftProfile{{Name: "a", Exes: []string{"x.exe"}, Enabled: true}, {Name: "b", Exes: []string{"X.EXE"}, Enabled: true}}},
-	}
-	for i, sd := range bad {
-		if err := validateSoftData(sd); err == nil {
-			t.Errorf("case %d: expected an error", i)
-		}
-	}
-	// the same exe in a disabled profile is fine
-	ok := &SoftData{Profiles: []*SoftProfile{{Name: "a", Exes: []string{"x.exe"}, Enabled: true}, {Name: "b", Exes: []string{"x.exe"}}}}
-	if err := validateSoftData(ok); err != nil {
-		t.Fatal(err)
-	}
-	if ok.Profiles[0].ID == "" || ok.Profiles[0].ID == ok.Profiles[1].ID {
-		t.Fatal("profile ids")
-	}
-}
-
 func TestSoftSlots(t *testing.T) {
 	for i := 0; i < softSlots; i++ {
 		if softSlotIndex(softSlotName(i)) != i || carrierSlotOfVK(carrierVK(i)) != i {
@@ -277,79 +109,295 @@ func TestSoftSlots(t *testing.T) {
 	}
 }
 
-func TestSoftActions(t *testing.T) {
+func softSettings(hw [softSlots]bool) Settings {
+	return Settings{ButtonMode: ModeSoftware, HWButtons: hw}
+}
+
+// Carrier layout of the default SM809 profile. The expected packets were
+// computed independently from docs/PROTOCOL.md (cmd 1, sub 2 / 18, button
+// order 11,12,13,14,15,9,10,0,1 | 2,3,4,5,8,6,7, pad FF to 30 bytes, checksum
+// (6 + Σ) & FF inserted at index 3), seq 0.
+func TestCarrierPackets(t *testing.T) {
+	p := newProfile("t", 0)
+	hw := defaultHW(p)
+	for i := 0; i < softSlots; i++ {
+		if hw[i] != (i == 9) { // button 10 = rapid fire stays a hardware button
+			t.Fatalf("defaultHW[%d] = %v", i, hw[i])
+		}
+	}
+	set := softSettings(hw)
+	m := carriedMask(set)
+	c := deviceProfile(p, set)
+	var codes [numButtons]KeyCode
+	for i, b := range c.Buttons {
+		codes[i] = KeyCode{byte(b.Code[0]), byte(b.Code[1]), byte(b.Code[2])}
+	}
+	pk := EncodeKeys(codes, func() byte { return 0 })
+	exp := []string{
+		"0100029a100100100200100400400200400300301002700072700068700069",
+		"0100121e70006a70006b70006c70006d70007070006e70006fffffffffffff",
+	}
+	for i := range exp {
+		if got := hex.EncodeToString(pk[i]); got != exp[i] {
+			t.Errorf("packet %d:\n got %s\nwant %s", i, got, exp[i])
+		}
+	}
+	if p.Buttons[0].Code != [3]int{112, 8, 7} {
+		t.Fatal("deviceProfile changed its argument")
+	}
+	if carrierInMemory(c) != m || carrierInMemory(p) != ([softSlots]bool{}) {
+		t.Fatal("carrierInMemory")
+	}
+	for i := 11; i < 16; i++ {
+		if c.Buttons[i] != p.Buttons[i] {
+			t.Fatalf("button %d changed", i+1)
+		}
+	}
+	// hardware mode and a mode not chosen yet: no carrier
+	for _, mode := range []string{"", ModeHardware} {
+		if deviceProfile(p, Settings{ButtonMode: mode, HWButtons: hw}) != p || carriedMask(Settings{ButtonMode: mode}) != ([softSlots]bool{}) {
+			t.Fatalf("mode %q writes a carrier", mode)
+		}
+	}
+}
+
+func TestDeviceProfileSignature(t *testing.T) {
+	p := newProfile("t", 0)
+	set := softSettings(defaultHW(p))
+	sig := func(s Settings) map[string]string {
+		m := map[string]string{}
+		for _, c := range buildCommands(deviceProfile(p, s), func(string) *Macro { return nil }, 0x11) {
+			m[c.key] = signature(c)
+		}
+		return m
+	}
+	a, b := sig(Settings{ButtonMode: ModeHardware}), sig(set)
+	for k := range a {
+		if (a[k] != b[k]) != (k == "keys") {
+			t.Errorf("%s: software mode should change only the keys command", k)
+		}
+	}
+	// hardware action of a software button, or a software action: no write
+	p.Buttons[3] = ButtonAssign{Kind: "mouse", Code: [3]int{16, 8, 0}}
+	p.Soft[3] = SoftBinding{Kind: SoftText, Text: "x"}
+	if sig(set)["keys"] != b["keys"] {
+		t.Error("software button change needs no write")
+	}
+	// a hardware button: written
+	p.Buttons[9] = ButtonAssign{Kind: "fire", Code: [3]int{48, 50, 3}}
+	if sig(set)["keys"] == b["keys"] {
+		t.Error("hardware button change must be written")
+	}
+	// left-click guard
+	q := newProfile("q", 0)
+	q.Buttons[2] = ButtonAssign{Kind: "mouse", Code: [3]int{16, 1, 0}}
+	q.Buttons[11] = ButtonAssign{Kind: "mouse", Code: [3]int{16, 2, 0}}
+	if !deviceHasLeft(q, Settings{ButtonMode: ModeHardware}) || deviceHasLeft(q, softSettings([softSlots]bool{})) {
+		t.Fatal("deviceHasLeft")
+	}
+	if defaultHW(q)[2] != true {
+		t.Fatal("a left click must default to a hardware button")
+	}
+}
+
+func TestSoftFromFirmware(t *testing.T) {
+	p := newProfile("t", 0)
+	p.Buttons[4] = ButtonAssign{Kind: "macro", Code: [3]int{144, 0, 0}, MacroID: "m1"}
+	p.Buttons[5] = ButtonAssign{Kind: "dpi", Code: [3]int{64, 2, 0}}
+	hw := defaultHW(p)
+	if hw[4] || !hw[5] || !hw[9] || hw[0] {
+		t.Fatalf("defaultHW %v", hw)
+	}
+	fillSoft(p, hw)
+	want := map[int]SoftBinding{
+		0:  {Kind: SoftKeys, Keys: "Win+D"},
+		1:  {Kind: SoftKeys, Keys: "2"},
+		3:  {Kind: SoftMouse, Button: "forward"},
+		4:  {Kind: SoftMacro, MacroID: "m1"},
+		5:  {},
+		9:  {},
+		10: {Kind: SoftKeys, Keys: "MyComputer"},
+	}
+	for i, w := range want {
+		if p.Soft[i] != w {
+			t.Errorf("button %d: %+v, want %+v", i+1, p.Soft[i], w)
+		}
+	}
+	// fillSoft keeps what is already set
+	p.Soft[1] = SoftBinding{Kind: SoftRun, Path: "x"}
+	fillSoft(p, [softSlots]bool{})
+	if p.Soft[1].Kind != SoftRun {
+		t.Fatal("fillSoft overwrote an action")
+	}
+	// profile copies do not share actions
+	c := *p
+	c.Soft[1].Path = "y"
+	if p.Soft[1].Path != "x" {
+		t.Fatal("Soft must be a value")
+	}
+}
+
+func TestSoftOutputAndRules(t *testing.T) {
+	d := defaultData()
+	g := newProfile("Game", 0)
+	d.Profiles = append(d.Profiles, g)
+	d.Rules = []Rule{{Exe: "off.exe", ProfileID: g.ID}, {Exe: "game.exe", ProfileID: g.ID, Enabled: true, OSD: true}}
+	if id, r := ruleProfileFor(d, `C:\G\GAME.EXE`); id != g.ID || r == nil || !r.OSD {
+		t.Fatal("rule")
+	}
+	if id, _ := ruleProfileFor(d, "off.exe"); id != "" {
+		t.Fatal("disabled rule used")
+	}
+	g.Soft[0] = SoftBinding{Kind: SoftKeys, Keys: "Ctrl+Z"}
+	g.Soft[1] = SoftBinding{Kind: SoftMouse, Button: "middle"}
+	g.Soft[2] = SoftBinding{Kind: SoftMacro, MacroID: "m1"}
+	g.Soft[3] = SoftBinding{Kind: SoftDisable}
+	m := &Macro{ID: "m1", Name: "M", ExecuteType: 3, Events: []MacroEvent{{Type: "keydown", Code: 4}, {Type: "keyup", Code: 4}}}
+	mo := func(id string) *Macro {
+		if id == "m1" {
+			return m
+		}
+		return nil
+	}
+	if o, ok := softOutput(g, 0, mo); !ok || o.Combo.String() != "Ctrl+Z" {
+		t.Fatal("keys")
+	}
+	if o, ok := softOutput(g, 1, mo); !ok || o.Button != "middle" {
+		t.Fatal("mouse")
+	}
+	if o, ok := softOutput(g, 2, mo); !ok || o.Macro == m || o.Macro.Name != "M" {
+		t.Fatal("macro output must be a copy")
+	}
+	if _, ok := softOutput(g, 2, func(string) *Macro { return nil }); ok {
+		t.Fatal("deleted macro played")
+	}
+	if o, ok := softOutput(g, 3, mo); !ok || o.Kind != SoftDisable {
+		t.Fatal("disable")
+	}
+	if _, ok := softOutput(g, 4, mo); ok {
+		t.Fatal("unset action does something")
+	}
+	if softMacroUse(d, "m1") == "" || softMacroUse(d, "m2") != "" {
+		t.Fatal("softMacroUse")
+	}
+}
+
+func TestValidateSoftBinding(t *testing.T) {
 	ok := func(b SoftBinding) SoftBinding {
 		t.Helper()
-		sd := &SoftData{Global: map[string]SoftBinding{"b1": b}}
-		if err := validateSoftData(sd); err != nil {
+		if err := validateSoftBinding(0, &b); err != nil {
 			t.Fatalf("%+v: %v", b, err)
 		}
-		return sd.Global["b1"]
+		return b
 	}
 	bad := func(b SoftBinding) {
 		t.Helper()
-		if err := validateSoftData(&SoftData{Global: map[string]SoftBinding{"b1": b}}); err == nil {
+		if err := validateSoftBinding(0, &b); err == nil {
 			t.Fatalf("%+v accepted", b)
 		}
 	}
-	b := ok(SoftBinding{Kind: SoftText, Text: "привет", After: "enter", CharDelay: 900, Keys: "X", Path: "y"})
-	if b.Method != TextUnicode || b.After != "Enter" || b.CharDelay != maxSoftCharDelay || b.Keys != "" || b.Path != "" {
+	b := ok(SoftBinding{Kind: SoftText, Text: "привет", After: "enter", CharDelay: 900, Keys: "X", Path: "y", Force: true})
+	if b.Method != TextUnicode || b.After != "Enter" || b.CharDelay != maxSoftCharDelay || b.Keys != "" || b.Path != "" || b.Force {
 		t.Fatalf("text not normalised: %+v", b)
 	}
-	b = ok(SoftBinding{Kind: SoftText, Text: "x", Method: TextKeys, Layout: "4090409"})
-	if b.Layout != "4090409" {
+	if ok(SoftBinding{Kind: SoftText, Text: "x", Method: TextKeys, Layout: "4090409"}).Layout != "4090409" {
 		t.Fatal("layout dropped")
 	}
 	if ok(SoftBinding{Kind: SoftText, Text: "x", Layout: "409"}).Layout != "" {
 		t.Fatal("layout kept for Unicode input")
 	}
+	if ok(SoftBinding{Kind: SoftKeys, Keys: "z+ctrl"}).Keys != "Ctrl+Z" {
+		t.Fatal("combo")
+	}
+	ok(SoftBinding{})
+	ok(SoftBinding{Kind: SoftText, Enc: "dpapi:xx", Secret: true})
 	bad(SoftBinding{Kind: SoftText})
 	bad(SoftBinding{Kind: SoftText, Text: "x", Method: "paste"})
 	bad(SoftBinding{Kind: SoftText, Text: "x", Method: TextKeys, Layout: "zz"})
 	bad(SoftBinding{Kind: SoftText, Text: "x", After: "Nope"})
 	bad(SoftBinding{Kind: SoftText, Text: strings.Repeat("a", maxSoftText+1)})
 	bad(SoftBinding{Kind: SoftText, Enc: "dpapi:xx"}) // secret switched off without a new text
-	ok(SoftBinding{Kind: SoftText, Enc: "dpapi:xx", Secret: true})
 	bad(SoftBinding{Kind: SoftMacro})
-	if ok(SoftBinding{Kind: SoftMacro, MacroID: "m1", Text: "t"}).Text != "" {
-		t.Fatal("stray field kept")
-	}
+	bad(SoftBinding{Kind: SoftKeys, Keys: "Ctrl+Nope"})
+	bad(SoftBinding{Kind: SoftMouse, Button: "side"})
+	bad(SoftBinding{Kind: "default"})
 	bad(SoftBinding{Kind: SoftRun, Path: "  "})
 	if p := ok(SoftBinding{Kind: SoftRun, Path: ` "C:\Tools\a.exe" `}).Path; p != `C:\Tools\a.exe` {
 		t.Fatalf("path %q", p)
 	}
 
-	// secrets are sealed; without encryption saving fails
-	sd := &SoftData{Global: map[string]SoftBinding{"b1": {Kind: SoftText, Text: "pw", Secret: true}}}
-	_ = validateSoftData(sd)
+	p := newProfile("t", 0)
+	p.Soft[1] = SoftBinding{Kind: SoftText, Text: "pw", Secret: true}
 	old := protectSecret
 	defer func() { protectSecret = old }()
 	protectSecret = nil
-	if sealSecrets(sd) == nil {
+	if sealSecrets(p) == nil {
 		t.Fatal("sealed without encryption")
 	}
 	protectSecret = func(s string) (string, error) { return "enc:" + s, nil }
-	if err := sealSecrets(sd); err != nil || sd.Global["b1"].Text != "" || sd.Global["b1"].Enc != "enc:pw" {
-		t.Fatalf("seal: %v %+v", err, sd.Global["b1"])
+	if err := sealSecrets(p); err != nil || p.Soft[1].Text != "" || p.Soft[1].Enc != "enc:pw" {
+		t.Fatalf("seal: %v %+v", err, p.Soft[1])
 	}
+}
 
-	// macros
-	sd = &SoftData{Profiles: []*SoftProfile{{Name: "G", Bindings: map[string]SoftBinding{"b2": {Kind: SoftMacro, MacroID: "m1"}}}}}
-	_ = validateSoftData(sd)
-	if softMacroUse(sd, "m1") == "" || softMacroUse(sd, "m2") != "" {
-		t.Fatal("softMacroUse")
+// 1.5 beta data: global bindings → every profile, program profiles → new
+// profiles + rules, the set of software buttons kept as on the mouse.
+func TestMigrateBeta(t *testing.T) {
+	d := defaultData()
+	base := d.Profiles[0]
+	other := newProfile("Other", 0)
+	d.Profiles = append(d.Profiles, other)
+	d.Rules = []Rule{{Exe: "taken.exe", ProfileID: other.ID, Enabled: true}}
+	d.Settings.SoftBindings = true
+	d.Soft = &SoftData{
+		Global: map[string]SoftBinding{
+			"b4": {Kind: SoftKeys, Keys: "Ctrl+Win+Right", Force: true},
+			"b2": {Kind: softLegacyDefault},
+			"b3": {Kind: SoftKeys, Keys: "Broken"},
+		},
+		Profiles: []*SoftProfile{{Name: "CAD", Exes: []string{"acad.exe", "taken.exe"}, Enabled: true, OSD: true,
+			Bindings: map[string]SoftBinding{"b5": {Kind: SoftMouse, Button: "middle"}, "b4": {Kind: softLegacyDefault}}}},
+		KeyRepeat: true, RestoreOnExit: true,
 	}
-	m := &Macro{ID: "m1", Name: "M", ExecuteType: 3, Events: []MacroEvent{{Type: "keydown", Code: 4}, {Type: "keyup", Code: 4}}}
-	o, okk := softOutput(sd, sd.Profiles[0], nil, 1, func(id string) *Macro {
-		if id == "m1" {
-			return m
+	var carrier [softSlots]bool
+	for i := range carrier {
+		carrier[i] = i != 9
+	}
+	migrateBeta(d, carrier, base)
+	if d.Soft != nil || d.Settings.SoftBindings || d.Settings.ButtonMode != ModeSoftware || !d.Settings.KeyRepeat || !d.Settings.RestoreOnExit {
+		t.Fatalf("settings %+v", d.Settings)
+	}
+	if d.Settings.HWButtons != defaultHW(base) {
+		t.Fatalf("hw %v", d.Settings.HWButtons)
+	}
+	for _, p := range []*Profile{base, other} {
+		if p.Soft[3] != (SoftBinding{Kind: SoftKeys, Keys: "Ctrl+Win+Right"}) || p.Soft[1] != (SoftBinding{Kind: SoftKeys, Keys: "2"}) || p.Soft[2] != (SoftBinding{Kind: SoftKeys, Keys: "1"}) {
+			t.Fatalf("%s: %+v", p.Name, p.Soft)
 		}
-		return nil
-	})
-	if !okk || o.Kind != SoftMacro || o.Macro == m || o.Macro.Name != "M" {
-		t.Fatal("macro output must be a copy")
 	}
-	if _, okk := softOutput(sd, sd.Profiles[0], nil, 1, func(string) *Macro { return nil }); okk {
-		t.Fatal("deleted macro played")
+	if len(d.Profiles) != 3 {
+		t.Fatal("program profile not created")
+	}
+	cad := d.Profiles[2]
+	if cad.Name != "CAD" || cad.Soft[4] != (SoftBinding{Kind: SoftMouse, Button: "middle"}) || cad.Soft[3] != (SoftBinding{Kind: SoftMouse, Button: "forward"}) || cad.ID == base.ID {
+		t.Fatalf("cad %+v", cad.Soft)
+	}
+	if len(d.Rules) != 2 || d.Rules[1] != (Rule{Exe: "acad.exe", ProfileID: cad.ID, OSD: true, Enabled: true}) {
+		t.Fatalf("rules %+v", d.Rules)
+	}
+	// carrier never written: the default split
+	d2 := defaultData()
+	d2.Settings.SoftBindings = true
+	d2.Soft = &SoftData{}
+	migrateBeta(d2, [softSlots]bool{}, d2.Profiles[0])
+	if d2.Settings.HWButtons != defaultHW(d2.Profiles[0]) {
+		t.Fatal("default split")
+	}
+	// beta with the mode off: stays undecided (asked at start)
+	d3 := defaultData()
+	d3.Soft = &SoftData{}
+	migrateBeta(d3, carrier, d3.Profiles[0])
+	if d3.Settings.ButtonMode != "" {
+		t.Fatal("mode chosen for the user")
 	}
 }

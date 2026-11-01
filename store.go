@@ -44,6 +44,10 @@ type Profile struct {
 	Ripple       bool `json:"ripple"`
 
 	Lighting int `json:"lighting"` // 0..10
+
+	// Soft: actions of buttons 1..11 when they are software buttons
+	// (software mode); Kind "" = nothing.
+	Soft [softSlots]SoftBinding `json:"soft"`
 }
 
 type Rule struct {
@@ -83,9 +87,19 @@ type Settings struct {
 
 	BTPaths []string `json:"btPaths"` // remembered Bluetooth HID paths → BT1, BT2
 
-	// SoftBindings: buttons 1..11 are written once as F13..F23 and remapped by
-	// the app (see softbind.go). Changed only through /api/soft/enable.
-	SoftBindings bool `json:"softBindings"`
+	// ButtonMode: "" (not chosen yet: the UI asks), ModeHardware or
+	// ModeSoftware (see softbind.go). Changed only through /api/buttons/mode.
+	ButtonMode string `json:"buttonMode"`
+	// HWButtons: in software mode, buttons 1..11 that stay hardware buttons.
+	// Changed only through /api/buttons/hw.
+	HWButtons [softSlots]bool `json:"hwButtons"`
+	// KeyRepeat: typematic repeat for a software button sending a single key.
+	KeyRepeat bool `json:"keyRepeat"`
+	// RestoreOnExit writes the hardware layout back when the app exits (one
+	// flash write per exit, and another one at the next start).
+	RestoreOnExit bool `json:"restoreOnExit"`
+
+	SoftBindings bool `json:"softBindings,omitempty"` // 1.5 betas, migrated
 }
 
 type PopupStyle struct {
@@ -116,8 +130,11 @@ type Data struct {
 	Macros   []*Macro   `json:"macros"`
 	Rules    []Rule     `json:"rules"`
 	Settings Settings   `json:"settings"`
-	Soft     *SoftData  `json:"soft"` // software bindings
+	Soft     *SoftData  `json:"soft,omitempty"` // 1.5 betas, migrated into profiles
 }
+
+// dataVersion 2 (SM809 Control 2.0): button modes, Profile.Soft.
+const dataVersion = 2
 
 // DeviceState is what we last wrote to the mouse (signatures per command), so
 // that only differences are sent. Not part of user data.
@@ -226,12 +243,11 @@ func defaultPopup() PopupStyle {
 func defaultData() *Data {
 	p := newProfile(T("Основной", "Default"), 0)
 	return &Data{
-		Version:  1,
+		Version:  dataVersion,
 		Profiles: []*Profile{p},
-		Soft:     defaultSoftData(),
 		Settings: Settings{
 			DefaultProfile: p.ID, BaseProfile: p.ID,
-			OSDProfile: true, OSDDPI: true, Popup: defaultPopup(),
+			OSDProfile: true, OSDDPI: true, Popup: defaultPopup(), KeyRepeat: true,
 			LowPercent: 20, CriticalPercent: 10, NotifyFull: true,
 			ScanSeconds: 2,
 		},
@@ -307,14 +323,24 @@ func (s *Store) fixup() {
 	for i := range d.Rules {
 		d.Rules[i].Exe = lower(strings.TrimSpace(d.Rules[i].Exe))
 	}
-	if d.Soft == nil {
-		d.Soft = defaultSoftData()
-	}
-	if err := validateSoftData(d.Soft); err != nil {
-		if b, e := json.MarshalIndent(d.Soft, "", " "); e == nil {
-			_ = os.WriteFile(filepath.Join(s.dir, "soft.invalid.json"), b, 0644)
+	if d.Version < dataVersion {
+		// 2.0: key repeat on by default; 1.5 beta data into profiles and rules
+		if d.Soft == nil {
+			d.Settings.KeyRepeat = true
 		}
-		d.Soft = defaultSoftData()
+		migrateBeta(d, s.state.Carrier, s.profile(d.Settings.BaseProfile))
+		d.Version = dataVersion
+	}
+	d.Soft = nil
+	switch d.Settings.ButtonMode {
+	case "", ModeHardware, ModeSoftware:
+	default:
+		d.Settings.ButtonMode = ""
+	}
+	for _, p := range d.Profiles {
+		if validateProfileSoft(p) != nil { // damaged file: drop the software actions only
+			p.Soft = [softSlots]SoftBinding{}
+		}
 	}
 }
 

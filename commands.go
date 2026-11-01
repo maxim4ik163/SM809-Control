@@ -83,15 +83,6 @@ func buildCommands(p *Profile, macroOf func(string) *Macro, sensor int) []devCom
 	return cmds
 }
 
-// deviceProfile is what is written to the mouse for p: in soft mode the
-// carried buttons send F13..F23 instead of their own action.
-func deviceProfile(p *Profile, soft bool) *Profile {
-	if soft {
-		return carrierProfile(p)
-	}
-	return p
-}
-
 func b2i(b bool) int {
 	if b {
 		return 1

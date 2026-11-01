@@ -238,15 +238,16 @@ type softRuntime struct {
 	capKey     bool
 	capBlocked map[uint32]bool
 
-	mu      sync.Mutex
-	ownExe  string
-	fgExe   string
-	profile string // active soft profile id
-	held    map[int]*softHeld
-	macros  map[int]*macroRun // macros started per button (still running or finished)
-	last    string
-	lastErr string
-	errAt   time.Time
+	mu         sync.Mutex
+	ownExe     string
+	fgExe      string
+	profile    string // id of the profile driving the software buttons
+	profileOSD bool   // it came from a rule with a popup
+	held       map[int]*softHeld
+	macros     map[int]*macroRun // macros started per button (still running or finished)
+	last       string
+	lastErr    string
+	errAt      time.Time
 
 	untilAny atomic.Int32 // running "until any key" macros (read by the hook)
 	ensured  bool         // carrier checked after the first link this session
@@ -329,6 +330,7 @@ func (r *softRuntime) run() {
 		for {
 			time.Sleep(2 * time.Second)
 			r.setForeground(foregroundExe()) // fallback for missed WinEvents
+			r.changed()                      // the profile on the mouse may have changed
 			r.ensureCarrier()
 		}
 	}()
@@ -465,14 +467,17 @@ func (r *softRuntime) handle(ev softEvent) {
 	onMouse := r.eng.OnMouse()
 	st := r.store
 	st.mu.Lock()
-	sd := st.data.Soft
-	sp := activeSoftProfile(sd, r.fgExe)
-	out, ok := softOutput(sd, sp, st.profile(onMouse), ev.slot, st.macro)
-	repeat := sd.KeyRepeat
+	pid, _ := ruleProfileFor(st.data, r.fgExe)
+	p := st.profile(pid)
+	if p == nil {
+		p = st.profile(onMouse)
+	}
+	out, ok := softOutput(p, ev.slot, st.macro)
+	repeat := st.data.Settings.KeyRepeat
 	st.mu.Unlock()
 	r.last = softSlotName(ev.slot)
 	if !ok {
-		logf("кнопка %d: действие только в мыши — нужна запись профиля", ev.slot+1)
+		logf("кнопка %d: действие не задано", ev.slot+1)
 		return
 	}
 	h := &softHeld{out: out}
@@ -589,11 +594,8 @@ func (r *softRuntime) ensureCarrier() {
 	onMouse := r.eng.OnMouse()
 	st := r.store
 	st.mu.Lock()
-	soft, synced, cur := st.data.Settings.SoftBindings, st.state.Synced, st.state.Carrier
-	var want [softSlots]bool
-	if p := st.profile(onMouse); p != nil && soft {
-		want = carriedMask(p)
-	}
+	soft, synced, cur := softMode(st.data.Settings), st.state.Synced, st.state.Carrier
+	want := carriedMask(st.data.Settings)
 	st.mu.Unlock()
 	if synced && soft && cur != want {
 		logf("программные кнопки: раскладка в мыши не совпадает — записываю клавиши")
@@ -618,42 +620,38 @@ func (r *softRuntime) setForeground(exe string) {
 	r.changed()
 }
 
-// changed recomputes the active soft profile (popup if it changed).
+// changed recomputes which profile drives the software buttons: the profile
+// of a rule for the program in front, otherwise the profile on the mouse.
+// Popup when it changes and the rule (new or previous) asks for one.
 func (r *softRuntime) changed() {
+	onMouse := r.eng.OnMouse()
 	st := r.store
 	r.mu.Lock()
-	exe, prevID := r.fgExe, r.profile
+	exe, prevID, prevOSD := r.fgExe, r.profile, r.profileOSD
 	r.mu.Unlock()
 	st.mu.Lock()
-	sd := st.data.Soft
-	var prev *SoftProfile
-	for _, p := range sd.Profiles {
-		if p.ID == prevID {
-			prev = p
-		}
+	id, rule := ruleProfileFor(st.data, exe)
+	show := rule != nil && rule.OSD
+	if st.profile(id) == nil {
+		id, show = onMouse, false
 	}
-	p := activeSoftProfile(sd, exe)
-	enabled, osdOn, style := st.data.Settings.SoftBindings, st.data.Settings.OSDProfile, st.data.Settings.Popup
-	var id, name string
-	show := false
-	if p != nil {
-		id, name, show = p.ID, p.Name, p.OSD
+	name := ""
+	if p := st.profile(id); p != nil {
+		name = p.Name
 	}
-	if prev != nil && prev.OSD {
-		show = true
-	}
+	enabled, osdOn, style := softMode(st.data.Settings), st.data.Settings.OSDProfile, st.data.Settings.Popup
 	st.mu.Unlock()
 	if id == prevID {
 		return
 	}
 	r.mu.Lock()
-	r.profile = id
+	r.profile, r.profileOSD = id, show
 	r.mu.Unlock()
-	logf("активное окно %s → кнопки «%s»", exe, name)
-	if enabled && osdOn && show && r.onOSD != nil {
-		if name == "" {
-			name = T("Общие", "Global")
-		}
+	if prevID == "" {
+		return // start-up: no popup
+	}
+	logf("активное окно %s → кнопки профиля «%s»", exe, name)
+	if enabled && osdOn && (show || prevOSD) && r.onOSD != nil {
 		r.onOSD(osdContent{Caption: T("Кнопки", "Buttons"), Value: name, Accent: parseHex(style.AccentColor, 0x4CAF50), Style: style})
 	}
 	r.wake()

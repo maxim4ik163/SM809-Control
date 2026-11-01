@@ -233,11 +233,13 @@ func (a *API) softStatus() SoftStatus {
 	onMouse := a.eng.OnMouse()
 	st := a.store
 	st.mu.Lock()
-	s.Enabled = st.data.Settings.SoftBindings
+	s.Enabled = softMode(st.data.Settings)
+	s.Mode = st.data.Settings.ButtonMode
 	s.Carrier = st.state.Carrier
+	s.Carriable = carriedMask(st.data.Settings)
 	s.OnMouse = onMouse
-	if p := st.profile(onMouse); p != nil {
-		s.Carriable = carriedMask(p)
+	if s.Profile == "" {
+		s.Profile = onMouse
 	}
 	st.mu.Unlock()
 	return s
@@ -274,50 +276,38 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 	case "soft/keys":
 		return keyDefs, nil
 
-	case "soft/save":
+	case "buttons/mode":
 		var req struct {
-			Soft *SoftData `json:"soft"`
+			Mode string `json:"mode"`
 		}
 		if err := dec(&req); err != nil {
 			return nil, err
 		}
-		if req.Soft == nil {
-			return nil, errors.New(T("пустой запрос", "empty request"))
+		if req.Mode != ModeHardware && req.Mode != ModeSoftware {
+			return nil, errors.New(T("неизвестный режим кнопок", "unknown button mode"))
 		}
-		if err := validateSoftData(req.Soft); err != nil {
-			return nil, err
-		}
-		if err := sealSecrets(req.Soft); err != nil {
-			return nil, err
-		}
+		onMouse := a.eng.OnMouse()
 		st.mu.Lock()
-		var missing error
-		forEachSoftBinding(req.Soft, func(where, slot string, b *SoftBinding) {
-			if missing == nil && b.Kind == SoftMacro && st.macro(b.MacroID) == nil {
-				missing = fmt.Errorf(T("%s, %s: макрос удалён", "%s, %s: the macro was deleted"), where, softSlotLabel(slot))
+		s := &st.data.Settings
+		first := s.ButtonMode == ""
+		if req.Mode == ModeSoftware && s.ButtonMode != ModeSoftware {
+			if s.HWButtons == ([softSlots]bool{}) || first {
+				// first time: buttons with firmware-only actions stay hardware
+				if p := st.profile(onMouse); p != nil {
+					s.HWButtons = defaultHW(p)
+				}
 			}
-		})
-		if missing != nil {
+			for _, p := range st.data.Profiles {
+				fillSoft(p, s.HWButtons)
+			}
+		}
+		prevMode := s.ButtonMode
+		s.ButtonMode = req.Mode
+		if p := st.profile(onMouse); p != nil && !deviceHasLeft(p, *s) {
+			s.ButtonMode = prevMode
 			st.mu.Unlock()
-			return nil, missing
+			return nil, errors.New(T("в мыши не осталось бы левого клика", "the mouse would be left without a left click"))
 		}
-		st.data.Soft = req.Soft
-		err := st.saveData()
-		st.mu.Unlock()
-		if a.soft != nil {
-			a.soft.changed()
-		}
-		return req.Soft, err
-
-	case "soft/enable":
-		var req struct {
-			On bool `json:"on"`
-		}
-		if err := dec(&req); err != nil {
-			return nil, err
-		}
-		st.mu.Lock()
-		st.data.Settings.SoftBindings = req.On
 		err := st.saveData()
 		st.mu.Unlock()
 		if err != nil {
@@ -326,13 +316,50 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		if a.soft != nil {
 			a.soft.changed()
 		}
-		reason := "программные кнопки выкл"
-		if req.On {
-			reason = "программные кнопки вкл"
+		if first && req.Mode == ModeHardware {
+			return map[string]any{"ok": true}, nil // nothing changes on the mouse
 		}
 		// writes just the key layout of the profile on the mouse; other
 		// unsaved-to-mouse changes of that profile stay pending
-		if err := a.eng.ApplyKeys(a.eng.OnMouse(), reason, true); err != nil {
+		if err := a.eng.ApplyKeys(onMouse, "режим кнопок: "+req.Mode, true); err != nil {
+			return map[string]any{"ok": false, "error": err.Error()}, nil
+		}
+		return map[string]any{"ok": true}, nil
+
+	case "buttons/hw":
+		var req struct {
+			HW [softSlots]bool `json:"hw"`
+		}
+		if err := dec(&req); err != nil {
+			return nil, err
+		}
+		onMouse := a.eng.OnMouse()
+		st.mu.Lock()
+		next := st.data.Settings
+		next.HWButtons = req.HW
+		for _, p := range st.data.Profiles {
+			if softMode(next) && !deviceHasLeft(p, next) {
+				st.mu.Unlock()
+				return nil, fmt.Errorf(T("в профиле «%s» не осталось бы аппаратной кнопки с левым кликом", "profile “%s” would have no hardware button with the left click"), p.Name)
+			}
+		}
+		st.data.Settings.HWButtons = req.HW
+		for _, p := range st.data.Profiles {
+			fillSoft(p, req.HW)
+		}
+		soft := softMode(st.data.Settings)
+		err := st.saveData()
+		st.mu.Unlock()
+		if err != nil {
+			return nil, err
+		}
+		if a.soft != nil {
+			a.soft.changed()
+		}
+		if !soft {
+			return map[string]any{"ok": true}, nil
+		}
+		if err := a.eng.ApplyKeys(onMouse, "аппаратные кнопки", true); err != nil {
 			return map[string]any{"ok": false, "error": err.Error()}, nil
 		}
 		return map[string]any{"ok": true}, nil
@@ -361,12 +388,26 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		if err := validateProfile(&p, a.eng.sensorType()); err != nil {
 			return nil, err
 		}
+		if err := validateProfileSoft(&p); err != nil {
+			return nil, err
+		}
+		if err := sealSecrets(&p); err != nil {
+			return nil, err
+		}
 		st.mu.Lock()
 		defer st.mu.Unlock()
 		for _, b := range p.Buttons {
 			if b.Kind == "macro" && st.macro(b.MacroID) == nil {
 				return nil, errors.New(T("назначен несуществующий макрос", "a deleted macro is assigned"))
 			}
+		}
+		for i, b := range p.Soft {
+			if b.Kind == SoftMacro && st.macro(b.MacroID) == nil {
+				return nil, fmt.Errorf(T("%s: макрос удалён", "%s: the macro was deleted"), softSlotLabel(i))
+			}
+		}
+		if !deviceHasLeft(&p, st.data.Settings) {
+			return nil, errors.New(T("хотя бы одна аппаратная кнопка должна оставаться левым кликом", "at least one hardware button must stay a left click"))
 		}
 		if cur := st.profile(p.ID); cur != nil {
 			*cur = p
@@ -400,6 +441,7 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 			p.Name = req.Name
 		} else {
 			p = newProfile(req.Name, sensor)
+			fillSoft(p, st.data.Settings.HWButtons) // software buttons do what the defaults do
 		}
 		st.data.Profiles = append(st.data.Profiles, p)
 		return map[string]string{"id": p.ID}, st.saveData()
@@ -508,7 +550,7 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 				}
 			}
 		}
-		if use := softMacroUse(st.data.Soft, req.ID); use != "" {
+		if use := softMacroUse(st.data, req.ID); use != "" {
 			return nil, fmt.Errorf(T("макрос назначен программной кнопке (%s)", "the macro is used by a soft button (%s)"), use)
 		}
 		var keep []*Macro
@@ -561,7 +603,7 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		s := req.Settings
 		old := st.data.Settings
 		s.DefaultProfile, s.BaseProfile, s.BTPaths = old.DefaultProfile, old.BaseProfile, old.BTPaths
-		s.SoftBindings = old.SoftBindings // changed only through soft/enable
+		s.ButtonMode, s.HWButtons = old.ButtonMode, old.HWButtons // dedicated endpoints
 		if s.Language != "ru" && s.Language != "en" {
 			s.Language = old.Language
 		}
@@ -677,7 +719,7 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		st.mu.Lock()
 		if cp := st.profile(cur); cp != nil {
 			res.Compared = cp.Name
-			for _, c := range buildCommands(deviceProfile(cp, st.data.Settings.SoftBindings), st.macro, sensor) {
+			for _, c := range buildCommands(deviceProfile(cp, st.data.Settings), st.macro, sensor) {
 				if mouseSig[c.key] != signature(c) {
 					res.Differences = append(res.Differences, c.key)
 				}
@@ -720,13 +762,15 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		}
 		onMouse := a.eng.OnMouse()
 		st.mu.Lock()
-		// soft mode: buttons that carry F13..F23 get the action they stand for
+		// software buttons (F13..F23 in the mouse) take the hardware action
+		// and the software action of the profile on the mouse
 		if mp := st.profile(onMouse); mp != nil {
 			for i, on := range carrierInMemory(p) {
 				if on {
 					p.Buttons[i] = mp.Buttons[i]
 				}
 			}
+			p.Soft = mp.Soft
 		}
 		st.data.Macros = append(st.data.Macros, cp.Macros...)
 		st.data.Profiles = append(st.data.Profiles, p)

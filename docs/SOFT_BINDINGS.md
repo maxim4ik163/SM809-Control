@@ -91,3 +91,16 @@ Besides keys, mouse buttons and "nothing" a soft button can:
 - **Start** — ShellExecute "open": a program, shortcut, document, folder or URL, with arguments; `%VAR%` expanded; normal user rights. The file picker runs in the settings window process on its own thread (a modal loop inside a WebView2 event handler is not allowed) and returns through `window.smPickResult`.
 
 Not done yet: running elevated (UIPI), a tray-menu entry. Macros still use the Macros tab editor, so its firmware limits (size, 4095 ms delays) apply to soft macros too.
+
+## 2.0: one Buttons tab, button modes
+
+The separate "Soft buttons" tab of the betas is gone; it made it unclear which assignment of a button was the working one.
+
+- `Settings.ButtonMode`: `""` (not chosen — the UI asks on start with pros and cons), `hardware`, `software`. Changed through `/api/buttons/mode` (keys-only write). A header badge shows it.
+- `Settings.HWButtons[11]`: in software mode, buttons 1–11 marked "hardware button" (one setting for all profiles, so the carrier layout never depends on the profile). Changed through `/api/buttons/hw` (keys-only write) from the checkbox in the button editor. Buttons 12–16 are always hardware.
+- `Profile.Soft[11]`: software actions per profile (keys, mouse, macro, text, start, nothing). `Profile.Buttons` keeps the hardware actions, used by hardware buttons and in hardware mode — switching modes loses nothing.
+- **One list of profiles.** Software buttons use the profile of the first enabled rule for the program in front (rules work in software mode even when per-game switching is off); otherwise the profile on the mouse. Hardware settings follow per-game switching (running process) as in 1.x, opt-in.
+- First switch to software: buttons with firmware-only actions (rapid fire, DPI, DPI lock, lighting toggle, left click) default to hardware; every profile's software actions are filled from the hardware ones (`fillSoft`), so the mouse behaves the same. New profiles get them too.
+- Guard: the layout written to the mouse must keep a hardware left click (`deviceHasLeft`) — checked on profile save, mode switch and the hardware-button change.
+- Migration (`dataVersion` 2): 1.x data → mode not chosen, key repeat on. 1.5 beta data → global bindings into every profile, beta program profiles into new profiles + rules, the set of software buttons as on the mouse, `KeyRepeat`/`RestoreOnExit` into Settings.
+- Without the app, software buttons do nothing ("restore on exit" writes the hardware layout).
