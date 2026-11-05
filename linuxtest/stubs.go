@@ -19,10 +19,10 @@ const (
 )
 
 type hidDevice struct {
-	Path               string
-	VID, PID           uint16
-	UsagePage, Usage   uint16
-	InLen, FeatLen     uint16
+	Path             string
+	VID, PID         uint16
+	UsagePage, Usage uint16
+	InLen, FeatLen   uint16
 }
 type statusReport struct {
 	Path string
@@ -45,8 +45,8 @@ var (
 	osdShown   []osdContent
 )
 
-func logf(string, ...any)             {}
-func osdShow(c osdContent)            { osdShown = append(osdShown, c) }
+func logf(string, ...any)              {}
+func osdShow(c osdContent)             { osdShown = append(osdShown, c) }
 func runningProcesses() map[string]int { return procs }
 func autostartEnabled() bool           { return false }
 func setAutostart(bool)                {}
@@ -61,7 +61,7 @@ func isCommandCollection(d hidDevice) bool {
 type cmdChannel struct{}
 
 func openCmdChannel(hidDevice) (*cmdChannel, error) { return &cmdChannel{}, nil }
-func (c *cmdChannel) close()                      {}
+func (c *cmdChannel) close()                        {}
 func (c *cmdChannel) send(p []byte) error {
 	if ackFail {
 		return errors.New("no ack")
@@ -73,7 +73,7 @@ func (c *cmdChannel) send(p []byte) error {
 }
 
 func dumpFlash(dir string) (string, error) { return "", errors.New("not on linux") }
-func shellOpen(string)                      {}
+func shellOpen(string)                     {}
 
 func readMouseMemory() (*MouseMemory, error) { return nil, errors.New("not on linux") }
 
@@ -92,4 +92,4 @@ func (a *atomicBool) Store(b bool) { a.v = b }
 var commandsActive atomicBool
 
 func statsSnapshot() map[string]readerStats { return map[string]readerStats{} }
-func isStatusCollection(d hidDevice) bool    { return d.UsagePage == vendorUsagePage && d.InLen >= 10 }
+func isStatusCollection(d hidDevice) bool   { return d.UsagePage == vendorUsagePage && d.InLen >= 10 }

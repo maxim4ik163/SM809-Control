@@ -19,7 +19,8 @@ type DevStatus struct {
 	Link     bool      `json:"link"`
 	Level    int       `json:"level"`
 	Rate     int       `json:"rate"`
-	Battery  int       `json:"battery"`
+	Battery  int       `json:"battery"`    // smoothed (batSmoother)
+	BatRaw   int       `json:"batteryRaw"` // as reported by the mouse
 	Charge   int       `json:"charge"`
 	Light    int       `json:"light"`
 	MaxRate  int       `json:"maxRate"`
@@ -51,6 +52,7 @@ type Engine struct {
 	jobs   chan *applyJob
 	bat    *BatHistory // may be nil
 	settle batSettler  // battery readings right after link-up are ignored
+	smooth batSmoother // stable battery value (all connections: one mouse)
 
 	// callbacks into the UI thread
 	onChange func()           // state changed (tray tooltip, SSE)
@@ -122,8 +124,9 @@ func (e *Engine) handleReport(r statusReport) {
 	if ns.Charge == 2 {
 		ns.Battery = 100
 	}
+	ns.BatRaw = ns.Battery
 	if !ns.Link {
-		ns.Level, ns.Battery, ns.Charge, ns.Light = prev.Level, prev.Battery, prev.Charge, prev.Light
+		ns.Level, ns.Battery, ns.Charge, ns.Light, ns.BatRaw = prev.Level, prev.Battery, prev.Charge, prev.Light, prev.BatRaw
 	}
 	settling := e.settle.settling(r.Path, ns.Link, had && prev.Link, ns.Updated)
 	if settling {
@@ -136,6 +139,16 @@ func (e *Engine) handleReport(r statusReport) {
 				ns.Battery, ns.Charge = l.Pct, l.Charge
 			}
 		}
+	}
+	if ns.Link && !settling {
+		if !e.smooth.ok && e.bat != nil {
+			// start from the stored value if it is recent, so that a restart
+			// does not bring the jitter back
+			if l, ok := e.bat.last(); ok && ns.Updated.Unix()-l.T < int64(batGap/time.Second) {
+				e.smooth.seed(l.Pct, l.Charge)
+			}
+		}
+		ns.Battery = e.smooth.feed(ns.Battery, ns.Charge, ns.Updated)
 	}
 	e.devs[r.Path] = ns
 	if settling {

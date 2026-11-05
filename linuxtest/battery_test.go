@@ -101,3 +101,70 @@ func TestSanitizeBattery(t *testing.T) {
 		t.Fatalf("wrong samples kept %+v", out)
 	}
 }
+
+func TestBatterySmoother(t *testing.T) {
+	var b batSmoother
+	t0 := time.Unix(1_700_000_000, 0)
+	at := func(s int) time.Time { return t0.Add(time.Duration(s) * time.Second) }
+	if b.feed(90, 0, at(0)) != 90 {
+		t.Fatal("first value is taken")
+	}
+	// jitter down and back: stays 90
+	for _, x := range []struct{ s, p int }{{10, 80}, {15, 90}, {40, 80}, {80, 90}} {
+		if got := b.feed(x.p, 0, at(x.s)); got != 90 {
+			t.Fatalf("jitter at %ds: %d", x.s, got)
+		}
+	}
+	// 80 held for 3 minutes: taken
+	b.feed(80, 0, at(100))
+	if b.feed(80, 0, at(279)) != 90 || b.feed(80, 0, at(280)) != 80 {
+		t.Fatal("drop after 3 min")
+	}
+	// back up on battery: only after 10 minutes
+	b.feed(90, 0, at(300))
+	if b.feed(90, 0, at(2099)) != 80 || b.feed(90, 0, at(2100)) != 90 {
+		t.Fatal("rise after 30 min")
+	}
+	// charge state change and big jumps are taken at once
+	if b.feed(90, 1, at(2101)) != 90 || b.feed(100, 2, at(2102)) != 100 {
+		t.Fatal("charge change")
+	}
+	if b.feed(70, 0, at(2103)) != 70 || b.feed(40, 0, at(2104)) != 40 {
+		t.Fatal("jump of 20+")
+	}
+	// while charging: up after 3 minutes, down only after 30 minutes
+	b.feed(40, 1, at(2200))
+	b.feed(50, 1, at(2210))
+	if b.feed(50, 1, at(2390)) != 50 {
+		t.Fatal("charging up")
+	}
+	b.feed(40, 1, at(2400))
+	if b.feed(40, 1, at(3000)) != 50 {
+		t.Fatal("charging down too early")
+	}
+}
+
+func TestSmoothHistory(t *testing.T) {
+	// the user's data around the 90 → 80 boundary (2026-11-04)
+	raw := []BatSample{
+		{T: 1793632792, Pct: 90}, {T: 1793634593, Pct: 90},
+		{T: 1793636372, Pct: 80}, {T: 1793636377, Pct: 90}, {T: 1793636458, Pct: 80}, {T: 1793636460, Pct: 90},
+		{T: 1793636559, Pct: 80}, {T: 1793636583, Pct: 90}, {T: 1793639193, Pct: 80}, {T: 1793639198, Pct: 90},
+		{T: 1793639289, Pct: 80}, {T: 1793639538, Pct: 90}, {T: 1793639561, Pct: 80}, {T: 1793639565, Pct: 90},
+		{T: 1793639594, Pct: 80}, {T: 1793641394, Pct: 80},
+	}
+	out := smoothBat(raw)
+	for i := 1; i < len(out); i++ {
+		if out[i].Pct > out[i-1].Pct {
+			t.Fatalf("rise in smoothed data: %+v", out)
+		}
+	}
+	if out[len(out)-1].Pct != 80 {
+		t.Fatalf("end %+v", out)
+	}
+	// idempotent
+	again := smoothBat(out)
+	if len(again) != len(out) {
+		t.Fatalf("not idempotent: %+v\n→ %+v", out, again)
+	}
+}

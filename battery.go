@@ -21,6 +21,14 @@ import (
 // 2026-11-05: 0 → 80 → 70, 0 → 60 → 50, 0 → 40 → 30). Battery values are
 // therefore ignored for batSettle after link-up (batSettler); the last known
 // value is shown meanwhile. sanitizeBat removes such glitches from old data.
+//
+// The firmware reports the charge in 10 % steps, and near a step boundary it
+// jumps back and forth for up to an hour (80 → 90 → 80 … every few seconds:
+// the voltage sags under load and recovers at rest). batSmoother keeps a
+// stable value: a step in the expected direction (down on battery, up while
+// charging) is taken once it has held for batDropHold, a step back only after
+// batRiseHold, a jump of batJump or more and any change of the charge state at
+// once. The same filter is applied once to the stored history (smoothBat).
 
 type BatSample struct {
 	T      int64  `json:"t"` // unix seconds
@@ -39,9 +47,10 @@ type BatForecast struct {
 }
 
 type BatHistory struct {
-	mu      sync.Mutex
-	path    string
-	Samples []BatSample `json:"samples"`
+	mu       sync.Mutex
+	path     string
+	Samples  []BatSample `json:"samples"`
+	Smoothed int         `json:"smoothed,omitempty"` // 1 = old data passed through smoothBat
 }
 
 const (
@@ -50,7 +59,109 @@ const (
 	batMinDrop   = 3      // % needed before a rate is trusted
 	batMinSpan   = 3600.0 // seconds
 	batSettle    = 15 * time.Second
+	batDropHold  = 3 * time.Minute  // step in the expected direction
+	batRiseHold  = 30 * time.Minute // step against it (up on battery, down while charging)
+	batJump      = 20               // % taken at once (charged elsewhere, …)
+	batGap       = 35 * time.Minute // longer without samples = mouse was not connected
 )
+
+// batSmoother turns the jittery 10 % steps of the firmware into a stable value.
+type batSmoother struct {
+	ok      bool
+	pct     int
+	charge  int
+	hasCand bool
+	cand    int
+	since   time.Time
+	at      time.Time // since when the stable value holds (start of the held step)
+}
+
+// seed sets the stable value without waiting (e.g. from the history).
+func (b *batSmoother) seed(pct, charge int) {
+	*b = batSmoother{ok: true, pct: pct, charge: charge}
+}
+
+func (b *batSmoother) take(pct, charge int, at time.Time) {
+	b.seed(pct, charge)
+	b.at = at
+}
+
+// feed takes a reported value and returns the stable one.
+func (b *batSmoother) feed(pct, charge int, now time.Time) int {
+	if !b.ok || charge != b.charge {
+		b.take(pct, charge, now)
+		return pct
+	}
+	d := pct - b.pct
+	if d == 0 {
+		b.hasCand = false
+		return b.pct
+	}
+	if d >= batJump || d <= -batJump {
+		b.take(pct, charge, now)
+		return pct
+	}
+	hold := batDropHold
+	if (charge == 0) == (d > 0) {
+		hold = batRiseHold
+	}
+	if !b.hasCand || b.cand != pct {
+		b.hasCand, b.cand, b.since = true, pct, now
+	}
+	if now.Sub(b.since) >= hold {
+		b.take(pct, charge, b.since)
+	}
+	return b.pct
+}
+
+// appendSample adds a sample unless it repeats the last one within the
+// heartbeat, or the clock went back.
+func appendSample(s []BatSample, x BatSample) []BatSample {
+	if n := len(s); n > 0 {
+		l := s[n-1]
+		if l.Pct == x.Pct && l.Charge == x.Charge && x.T-l.T < int64(batHeartbeat/time.Second) {
+			return s
+		}
+		if x.T < l.T {
+			return s
+		}
+	}
+	return append(s, x)
+}
+
+// smoothBat replays the history through batSmoother. Each sample's value is
+// assumed to have held until the next sample, unless the gap is so long that
+// the mouse was not connected in between. An accepted step is dated by when it
+// started to hold, so applying smoothBat again changes nothing.
+func smoothBat(s []BatSample) []BatSample {
+	var b batSmoother
+	out := make([]BatSample, 0, len(s))
+	put := func(x BatSample, raw int, t int64) {
+		x.T = t
+		x.Pct = b.feed(raw, x.Charge, time.Unix(t, 0))
+		if n := len(out); n > 0 && (out[n-1].Pct != x.Pct || out[n-1].Charge != x.Charge) {
+			if at := b.at.Unix(); at < x.T {
+				for len(out) > 0 && out[len(out)-1].T > at {
+					out = out[:len(out)-1] // old value repeated after the step began
+				}
+				y := x
+				y.T = at
+				out = appendSample(out, y)
+			}
+		}
+		out = appendSample(out, x) // dropped as a repeat unless it is a heartbeat
+	}
+	for i, x := range s {
+		put(x, x.Pct, x.T)
+		if i+1 < len(s) {
+			next := s[i+1].T
+			if next > x.T && next-x.T <= int64(batGap/time.Second) {
+				put(x, x.Pct, next)
+			}
+		}
+	}
+	return out
+}
 
 // batSettler remembers when each HID path got its link, to ignore the battery
 // readings of the first batSettle after that.
@@ -104,7 +215,13 @@ func loadBatHistory(dir string) *BatHistory {
 		_ = json.Unmarshal(b, h)
 		if n := len(h.Samples); n > 0 {
 			h.Samples = sanitizeBat(h.Samples)
-			if len(h.Samples) != n {
+			changed := len(h.Samples) != n
+			if h.Smoothed < 1 {
+				h.Samples = smoothBat(h.Samples)
+				changed = true
+			}
+			if changed {
+				h.Smoothed = 1
 				_ = writeJSONAtomic(h.path, h)
 			}
 		}
@@ -128,17 +245,12 @@ func (h *BatHistory) add(pct, charge int, mode string, now time.Time) {
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	t := now.Unix()
-	if n := len(h.Samples); n > 0 {
-		l := h.Samples[n-1]
-		if l.Pct == pct && l.Charge == charge && t-l.T < int64(batHeartbeat/time.Second) {
-			return
-		}
-		if t < l.T { // clock went back
-			return
-		}
+	n := len(h.Samples)
+	h.Samples = appendSample(h.Samples, BatSample{T: now.Unix(), Pct: pct, Charge: charge, Mode: mode})
+	if len(h.Samples) == n {
+		return
 	}
-	h.Samples = append(h.Samples, BatSample{T: t, Pct: pct, Charge: charge, Mode: mode})
+	h.Smoothed = 1
 	cut := now.Add(-batKeep).Unix()
 	i := 0
 	for i < len(h.Samples) && h.Samples[i].T < cut {
@@ -279,6 +391,7 @@ func fmtHours(h float64) string {
 func (h *BatHistory) replace(s []BatSample) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.Samples = sanitizeBat(s)
+	h.Samples = smoothBat(sanitizeBat(s))
+	h.Smoothed = 1
 	_ = writeJSONAtomic(h.path, h)
 }

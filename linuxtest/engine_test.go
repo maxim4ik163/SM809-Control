@@ -582,4 +582,17 @@ func TestBatteryStartupGlitch(t *testing.T) {
 	if l, _ := e.bat.last(); l.Pct != 65 {
 		t.Fatalf("after settle: %+v", e.bat.Samples)
 	}
+	// jitter after that does not reach the history or the display
+	e.handleReport(bat(75))
+	e.handleReport(bat(65))
+	e.handleReport(bat(55))
+	e.mu.Lock()
+	shown, raw := e.primary().Battery, e.primary().BatRaw
+	e.mu.Unlock()
+	if shown != 65 || raw != 55 {
+		t.Fatalf("shown %d raw %d", shown, raw)
+	}
+	if l, _ := e.bat.last(); l.Pct != 65 {
+		t.Fatalf("jitter recorded: %+v", e.bat.Samples)
+	}
 }
