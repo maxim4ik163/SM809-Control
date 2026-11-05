@@ -48,8 +48,9 @@ type Engine struct {
 	pending  *applyJob
 	seq      int
 
-	jobs chan *applyJob
-	bat  *BatHistory // may be nil
+	jobs   chan *applyJob
+	bat    *BatHistory // may be nil
+	settle batSettler  // battery readings right after link-up are ignored
 
 	// callbacks into the UI thread
 	onChange func()           // state changed (tray tooltip, SSE)
@@ -124,8 +125,24 @@ func (e *Engine) handleReport(r statusReport) {
 	if !ns.Link {
 		ns.Level, ns.Battery, ns.Charge, ns.Light = prev.Level, prev.Battery, prev.Charge, prev.Light
 	}
+	settling := e.settle.settling(r.Path, ns.Link, had && prev.Link, ns.Updated)
+	if settling {
+		// keep showing the last known value while the firmware's reading settles
+		switch {
+		case had && prev.HasState && prev.Battery > 0:
+			ns.Battery, ns.Charge = prev.Battery, prev.Charge
+		case e.bat != nil:
+			if l, ok := e.bat.last(); ok {
+				ns.Battery, ns.Charge = l.Pct, l.Charge
+			}
+		}
+	}
 	e.devs[r.Path] = ns
-	logf("статус %s: % X", ns.Mode, d[:12])
+	if settling {
+		logf("статус %s: % X (заряд ещё не установился, показан %d%%)", ns.Mode, d[:12], ns.Battery)
+	} else {
+		logf("статус %s: % X", ns.Mode, d[:12])
+	}
 
 	// one-time: seed the default profile from what the mouse reports, so that
 	// the very first full sync does not silently change the user's settings
@@ -172,8 +189,8 @@ func (e *Engine) handleReport(r statusReport) {
 	if dpiPopup != nil && e.onOSD != nil {
 		e.onOSD(*dpiPopup)
 	}
-	e.batteryNotify(prev, ns)
-	if ns.Link && e.bat != nil {
+	e.batteryNotify(prev, ns, settling)
+	if ns.Link && !settling && e.bat != nil {
 		e.bat.add(ns.Battery, ns.Charge, ns.Mode, time.Now())
 	}
 	if ns.Link && pend != nil {
@@ -202,19 +219,21 @@ var (
 	lowNotified, critNotified bool
 )
 
-func (e *Engine) batteryNotify(prev, ns *DevStatus) {
+func (e *Engine) batteryNotify(prev, ns *DevStatus, settling bool) {
 	if e.onNotify == nil || !ns.Link {
 		return
 	}
 	s := e.store.data.Settings
 	charging := ns.Charge != 0
-	if charging || (s.LowPercent > 0 && ns.Battery > s.LowPercent+5) {
+	// right after link-up the reading is not trusted yet (batSettle): no
+	// battery notifications, only the link one below
+	if !settling && (charging || (s.LowPercent > 0 && ns.Battery > s.LowPercent+5)) {
 		lowNotified = false
 	}
-	if charging || (s.CriticalPercent > 0 && ns.Battery > s.CriticalPercent+5) {
+	if !settling && (charging || (s.CriticalPercent > 0 && ns.Battery > s.CriticalPercent+5)) {
 		critNotified = false
 	}
-	if !charging {
+	if !settling && !charging {
 		if s.CriticalPercent > 0 && ns.Battery <= s.CriticalPercent && !critNotified {
 			e.onNotify(T("SM809: очень низкий заряд", "SM809: battery critical"), fmt.Sprintf(T("Заряд мыши %d%%. Подключите зарядку.", "Mouse battery %d%%. Connect the charger."), ns.Battery)+e.leftText(), true)
 			critNotified, lowNotified = true, true
@@ -223,7 +242,7 @@ func (e *Engine) batteryNotify(prev, ns *DevStatus) {
 			lowNotified = true
 		}
 	}
-	if s.NotifyFull && prev.HasState && prev.Link && prev.Charge == 1 && ns.Charge == 2 {
+	if !settling && s.NotifyFull && prev.HasState && prev.Link && prev.Charge == 1 && ns.Charge == 2 {
 		e.onNotify("SM809", T("Мышь заряжена", "Mouse is fully charged"), false)
 	}
 	if s.NotifyLink && prev.HasState && prev.Link != ns.Link {
@@ -238,6 +257,7 @@ func (e *Engine) batteryNotify(prev, ns *DevStatus) {
 func (e *Engine) deviceGone(path string) {
 	e.mu.Lock()
 	delete(e.devs, path)
+	e.settle.forget(path)
 	e.mu.Unlock()
 	e.changed()
 }

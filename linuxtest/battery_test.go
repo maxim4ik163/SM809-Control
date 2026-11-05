@@ -50,3 +50,54 @@ func TestBatteryForecast(t *testing.T) {
 		t.Fatal("empty load")
 	}
 }
+
+func TestBatterySettle(t *testing.T) {
+	var g batSettler
+	t0 := time.Unix(1_700_000_000, 0)
+	p := "dongle"
+	if g.settling(p, false, false, t0) {
+		t.Fatal("no link must not settle")
+	}
+	if !g.settling(p, true, false, t0) || !g.settling(p, true, true, t0.Add(14*time.Second)) {
+		t.Fatal("must settle right after link-up")
+	}
+	if g.settling(p, true, true, t0.Add(16*time.Second)) {
+		t.Fatal("settled after batSettle")
+	}
+	// link lost and back: settle again
+	g.settling(p, false, true, t0.Add(60*time.Second))
+	if !g.settling(p, true, false, t0.Add(61*time.Second)) {
+		t.Fatal("must settle after reconnect")
+	}
+	// unknown path with link (path re-enumerated): treated as link-up
+	g.forget(p)
+	if !g.settling(p, true, true, t0.Add(100*time.Second)) {
+		t.Fatal("forgotten path must settle")
+	}
+}
+
+func TestSanitizeBattery(t *testing.T) {
+	// from the user's battery.json (2026-11-05)
+	in := []BatSample{
+		{T: 1793656633, Pct: 70},
+		{T: 1793710898, Pct: 0}, {T: 1793710899, Pct: 80}, {T: 1793710910, Pct: 70},
+		{T: 1793739288, Pct: 50},
+		{T: 1793780311, Pct: 0}, {T: 1793780311, Pct: 60}, {T: 1793780323, Pct: 50},
+		{T: 1793800000, Pct: 0},            // real 0 (nothing follows soon): kept
+		{T: 1793900000, Pct: 0, Charge: 1}, // charging from empty: kept
+		{T: 1793900010, Pct: 5, Charge: 1},
+	}
+	out := sanitizeBat(in)
+	want := []int{70, 70, 50, 50, 0, 0, 5}
+	if len(out) != len(want) {
+		t.Fatalf("got %+v", out)
+	}
+	for i, w := range want {
+		if out[i].Pct != w {
+			t.Fatalf("sample %d: got %+v", i, out)
+		}
+	}
+	if out[1].T != 1793710910 || out[3].T != 1793780323 {
+		t.Fatalf("wrong samples kept %+v", out)
+	}
+}

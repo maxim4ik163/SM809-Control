@@ -542,3 +542,44 @@ func TestLoad1x(t *testing.T) {
 		}
 	}
 }
+
+// PC start: the dongle appears, the mouse reports 0 %, then a too-high value,
+// then the real one. Nothing of the first 15 s may reach the history or the
+// low-battery notification, and the last known value is shown meanwhile.
+func TestBatteryStartupGlitch(t *testing.T) {
+	_, e := setup(t)
+	e.bat = &BatHistory{path: t.TempDir() + "/b.json"}
+	e.bat.add(70, 0, "dongle", time.Now().Add(-time.Hour))
+	var notes []string
+	e.onNotify = func(title, text string, warn bool) { notes = append(notes, title) }
+	bat := func(p byte) statusReport {
+		r := report(true, 1, 1, 9)
+		r.Data[4] = p
+		return r
+	}
+	e.handleReport(report(false, 1, 1, 9)) // dongle up, mouse offline
+	e.handleReport(bat(0))
+	e.handleReport(bat(80))
+	e.mu.Lock()
+	shown := e.primary().Battery
+	e.mu.Unlock()
+	if shown != 70 {
+		t.Fatalf("shown %d during settle, want last known 70", shown)
+	}
+	if n := len(e.bat.Samples); n != 1 {
+		t.Fatalf("history got %d samples during settle: %+v", n, e.bat.Samples)
+	}
+	if len(notes) != 0 {
+		t.Fatalf("notifications during settle: %v", notes)
+	}
+	// after the settle time the real value is taken
+	e.mu.Lock()
+	for k := range e.settle.up {
+		e.settle.up[k] = time.Now().Add(-batSettle - time.Second)
+	}
+	e.mu.Unlock()
+	e.handleReport(bat(65))
+	if l, _ := e.bat.last(); l.Pct != 65 {
+		t.Fatalf("after settle: %+v", e.bat.Samples)
+	}
+}

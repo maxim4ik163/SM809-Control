@@ -33,7 +33,7 @@ An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gamin
 - **Profiles.** Unlimited, stored on the PC. Only the current one is written to the mouse, and **only the settings that differ**, to spare the flash memory.
 - **Per-game profiles** (opt-in). A profile is written to the mouse when an `.exe` starts and reverted when it exits. Off by default; turned on only after a warning about flash wear. Software buttons don't need it.
 - **On-screen popups** for DPI, profile and button-set changes with a customisable look.
-- **Connection and battery.** Cable / 2.4 GHz dongle / Bluetooth 1 / Bluetooth 2, battery and charging, also over Bluetooth. Battery history chart, drain per day, time left or time to full, low-battery notifications.
+- **Connection and battery.** Cable / 2.4 GHz dongle / Bluetooth 1 / Bluetooth 2, battery and charging, also over Bluetooth. Battery history chart, drain per day, time left or time to full, low-battery notifications. The bogus reading the mouse sends for the first seconds after connecting (0 %, then too high) is ignored.
 - **Connection diagnostics.** Settings → Mouse → *Connection diagnostics…* shows what Windows exposes and what the mouse answers; save it to a file for a bug report.
 - **Read settings from the mouse** (cable). Reads the mouse memory (read-only), compares it with the current profile and can turn it into a profile.
 - **Experimental:** key debounce threshold, a hidden firmware setting for switches that start to double-click.
@@ -175,7 +175,7 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md): status report, all commands, button co
 - **Профили:** без ограничения количества, хранятся на компьютере. В мышь пишется только то, что отличается.
 - **Переключение по играм** (по желанию): профиль записывается в мышь при запуске exe и возвращается при выходе. По умолчанию выключено и включается только после предупреждения об износе флеш-памяти. Программным кнопкам оно не нужно.
 - **Всплывающие окна** DPI, профиля и набора кнопок с настройкой внешнего вида.
-- **Подключение и батарея:** провод, донгл, BT1, BT2, заряд — в том числе по Bluetooth. График заряда, расход в сутки, прогноз остатка и времени до полной зарядки, уведомления.
+- **Подключение и батарея:** провод, донгл, BT1, BT2, заряд — в том числе по Bluetooth. График заряда, расход в сутки, прогноз остатка и времени до полной зарядки, уведомления. Ложный заряд в первые секунды после подключения (0 %, затем завышенный) не учитывается.
 - **Диагностика подключения:** «Настройки → Мышь → Диагностика подключения…» показывает, что видит Windows и что отвечает мышь; можно сохранить в файл для отчёта об ошибке.
 - **Чтение настроек из мыши** (по кабелю): только чтение, сравнение с профилем, можно сделать из этого профиль.
 - **Экспериментальное:** антидребезг кнопок — скрытая настройка прошивки на случай даблкликов.

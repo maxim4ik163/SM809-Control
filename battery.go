@@ -14,6 +14,13 @@ import (
 // A sample is stored when the percentage or the charge state changes, plus a
 // heartbeat every 30 minutes so that flat periods are visible on the chart.
 // Only reports from a connected mouse are recorded.
+//
+// Right after the link comes up (PC start, dongle plugged in, mouse woken up)
+// the firmware reports nonsense for a few seconds: first 0 %, then a value
+// about 10 % too high, and the real value ~12 s later (battery.json of
+// 2026-11-05: 0 → 80 → 70, 0 → 60 → 50, 0 → 40 → 30). Battery values are
+// therefore ignored for batSettle after link-up (batSettler); the last known
+// value is shown meanwhile. sanitizeBat removes such glitches from old data.
 
 type BatSample struct {
 	T      int64  `json:"t"` // unix seconds
@@ -40,16 +47,79 @@ type BatHistory struct {
 const (
 	batKeep      = 60 * 24 * time.Hour
 	batHeartbeat = 30 * time.Minute
-	batMinDrop   = 3       // % needed before a rate is trusted
-	batMinSpan   = 3600.0  // seconds
+	batMinDrop   = 3      // % needed before a rate is trusted
+	batMinSpan   = 3600.0 // seconds
+	batSettle    = 15 * time.Second
 )
+
+// batSettler remembers when each HID path got its link, to ignore the battery
+// readings of the first batSettle after that.
+type batSettler struct {
+	up map[string]time.Time
+}
+
+// settling reports whether battery values from this report must be ignored.
+// wasLinked = the previous report of the same path had a link.
+func (g *batSettler) settling(path string, link, wasLinked bool, now time.Time) bool {
+	if g.up == nil {
+		g.up = map[string]time.Time{}
+	}
+	if !link {
+		delete(g.up, path)
+		return false
+	}
+	t, ok := g.up[path]
+	if !wasLinked || !ok {
+		g.up[path] = now
+		t = now
+	}
+	return now.Sub(t) < batSettle
+}
+
+func (g *batSettler) forget(path string) {
+	delete(g.up, path)
+}
+
+// sanitizeBat drops start-up glitches recorded by older versions: a 0 %
+// sample (not charging) followed within a minute by a non-zero one, and the
+// too-high value right after it when the real one follows within 30 s.
+func sanitizeBat(s []BatSample) []BatSample {
+	out := make([]BatSample, 0, len(s))
+	for i := 0; i < len(s); i++ {
+		x := s[i]
+		if x.Pct == 0 && x.Charge == 0 && i+1 < len(s) && s[i+1].Pct > 0 && s[i+1].T-x.T <= 60 {
+			if i+2 < len(s) && s[i+2].Charge == s[i+1].Charge && s[i+2].T-s[i+1].T <= 30 {
+				i++ // skip the too-high one as well
+			}
+			continue
+		}
+		out = append(out, x)
+	}
+	return out
+}
 
 func loadBatHistory(dir string) *BatHistory {
 	h := &BatHistory{path: filepath.Join(dir, "battery.json")}
 	if b, err := os.ReadFile(h.path); err == nil {
 		_ = json.Unmarshal(b, h)
+		if n := len(h.Samples); n > 0 {
+			h.Samples = sanitizeBat(h.Samples)
+			if len(h.Samples) != n {
+				_ = writeJSONAtomic(h.path, h)
+			}
+		}
 	}
 	return h
+}
+
+// last returns the most recent sample.
+func (h *BatHistory) last() (BatSample, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if n := len(h.Samples); n > 0 {
+		return h.Samples[n-1], true
+	}
+	return BatSample{}, false
 }
 
 func (h *BatHistory) add(pct, charge int, mode string, now time.Time) {
@@ -209,6 +279,6 @@ func fmtHours(h float64) string {
 func (h *BatHistory) replace(s []BatSample) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	h.Samples = append([]BatSample(nil), s...)
+	h.Samples = sanitizeBat(s)
 	_ = writeJSONAtomic(h.path, h)
 }
