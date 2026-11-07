@@ -2,6 +2,18 @@
 
 Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/releases).
 
+## 2.1.7 — 2026-11-07
+
+**English**
+
+- **Autostart works when the app runs as administrator.** Windows silently skips `Run` autostart entries of programs that need elevation (e.g. *Run as administrator* set in the exe's compatibility properties): the entry showed as enabled, but the app did not start. Running as administrator, the app now creates a Task Scheduler task `SM809Control` (at logon, highest privileges, no UAC prompt, no 72-hour limit, runs on battery, normal priority) instead of the `Run` entry, and moves an existing `Run` entry over. Settings → Application shows a note about it; a normal-level app shows the task as read-only.
+- README: new section *Administrator rights* — what works in elevated programs when SM809 Control runs with and without rights.
+
+**Русский**
+
+- **Автозапуск работает, когда программа запущена от администратора.** Windows молча пропускает записи автозапуска `Run` у программ, которым нужны права (например, в свойствах exe включено «Запускать от имени администратора»): запись была «включена», но программа не стартовала. Запущенная от администратора программа теперь создаёт задачу Планировщика заданий `SM809Control` (при входе, с наивысшими правами, без запроса UAC, без лимита 72 часа, от батареи, обычный приоритет) вместо записи `Run` и переносит в неё существующую запись. В «Настройки → Программа» об этом есть строка; программа без прав показывает задачу только для чтения.
+- README: новый раздел «Права администратора» — что работает в программах от администратора, когда SM809 Control запущен с правами и без.
+
 ## 2.1.6 — 2026-11-05
 
 **English**
