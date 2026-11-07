@@ -266,7 +266,10 @@ type allView struct {
 	State     stateView      `json:"state"`
 	Lighting  []string       `json:"lighting"`
 	Autostart bool           `json:"autostart"`
-	Version   string         `json:"version"`
+	// AutostartMode: "run" (Run key), "task" (Task Scheduler, as administrator) or "".
+	AutostartMode string `json:"autostartMode"`
+	Elevated      bool   `json:"elevated"` // this process runs as administrator
+	Version       string `json:"version"`
 }
 
 func (a *API) handle(path string, body json.RawMessage) (any, error) {
@@ -284,7 +287,9 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		st.mu.Unlock()
 		var d Data
 		_ = json.Unmarshal(b, &d)
-		return allView{Defaults: defaultsView(), Data: &d, State: a.stateView(), Lighting: lightingModes, Autostart: autostartEnabled(), Version: appVersion}, nil
+		mode := autostartMode()
+		return allView{Defaults: defaultsView(), Data: &d, State: a.stateView(), Lighting: lightingModes,
+			Autostart: mode != "", AutostartMode: mode, Elevated: isElevated(), Version: appVersion}, nil
 
 	case "state":
 		return a.stateView(), nil
@@ -661,8 +666,10 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		logEnabled = s.Debug
 		err := st.saveData()
 		st.mu.Unlock()
-		if req.Autostart != nil {
-			setAutostart(*req.Autostart)
+		if req.Autostart != nil && *req.Autostart != autostartEnabled() {
+			if e := setAutostart(*req.Autostart); e != nil && err == nil {
+				err = e
+			}
 		}
 		if debounceChanged && s.DebounceSet {
 			// diff-only apply of the profile that is on the mouse → just the debounce command

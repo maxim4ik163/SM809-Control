@@ -15,7 +15,7 @@ import (
 	"unsafe"
 )
 
-const appVersion = "2.1.6"
+const appVersion = "2.1.7"
 
 const projectURL = "https://github.com/maxim4ik163/SM809-Control"
 
@@ -236,7 +236,13 @@ func showMenu() {
 	case c == cmdOpenUI:
 		openUI()
 	case c == cmdAutostart:
-		setAutostart(!autostartEnabled())
+		on := !autostartEnabled()
+		go func() {
+			if err := setAutostart(on); err != nil {
+				uiCall(func() { notify(T("Автозапуск", "Autostart"), err.Error(), true) })
+			}
+			api.notify()
+		}()
 	case c == cmdApplyAll:
 		id := snap.Active
 		if id == "" {

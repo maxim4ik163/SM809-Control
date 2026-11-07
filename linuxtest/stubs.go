@@ -49,7 +49,9 @@ func logf(string, ...any)              {}
 func osdShow(c osdContent)             { osdShown = append(osdShown, c) }
 func runningProcesses() map[string]int { return procs }
 func autostartEnabled() bool           { return false }
-func setAutostart(bool)                {}
+func autostartMode() string            { return "" }
+func isElevated() bool                 { return false }
+func setAutostart(bool) error          { return nil }
 
 var devices []hidDevice
 

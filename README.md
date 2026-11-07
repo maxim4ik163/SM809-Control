@@ -85,10 +85,33 @@ Get `SM809Control_vX.Y.Z.exe` from [Releases](../../releases). It is a single fi
 **Notes on software mode.**
 - Software buttons do nothing while SM809 Control is not running. Turn on *Settings → Buttons → Restore the hardware layout when the app exits* if you want the mouse to work normally after closing the app (this costs one write per exit and start).
 - With a Japanese input method active, the International keys of buttons 14–16 may be seen by the IME before the app; mark those buttons as hardware if that bothers you.
-- Programs running as administrator don't receive keys from a normal-level app (Windows UIPI). Run SM809 Control as administrator if you need its actions there.
+- Programs running as administrator (some games and launchers) are a special case — see [Administrator rights](#administrator-rights).
 - Switching the mode or marking a button hardware/software writes the key layout to the mouse once.
 
 Data is stored in `%APPDATA%\SM809Control` (`data.json`: profiles, macros, rules, settings; `device.json`: what is on the mouse; `battery.json`: battery history).
+
+## Administrator rights
+
+SM809 Control does not need administrator rights. Mouse settings, DPI, lighting, battery and **hardware** buttons work the same either way — they live in the mouse. Rights matter only for **software buttons** used in programs that themselves run as administrator (some games, anti-cheat launchers, Task Manager, installers, an elevated console).
+
+**When SM809 Control runs without rights and the program in front runs as administrator** (Windows UIPI — User Interface Privilege Isolation):
+- Windows does not pass that program's keyboard input to the app's keyboard hook (Microsoft documents the same for the PowerToys keyboard remapper). The software button's carrier key (F13–F24, International 1/4/5) is therefore **not intercepted**: it reaches the program unchanged, and the button's action is not performed. Most programs ignore these keys, but a game can let you bind them.
+- So no software action runs in that window — keys, text, macros and "Start" alike. Input sent by a normal-level app would be blocked by Windows there anyway.
+- Hardware buttons (including keys written to the mouse) work normally: the mouse itself is a keyboard. Profiles by the program in front still switch correctly.
+- Switch to another (normal) window and everything works again — the limit applies only while an elevated window is in front.
+
+**When SM809 Control runs as administrator**, software buttons work in every window. Two side effects:
+- Programs started by a "Start" action (and the vendor links in the app) inherit administrator rights. A URL usually opens in a browser that is already running and keeps its normal rights.
+- The normal Windows autostart (the `Run` registry key) **silently skips** programs that need elevation — the entry shows as "Enabled" in Task Manager → Startup apps, but nothing starts. See below.
+
+**How to run it as administrator:** exe properties → *Compatibility* → *Run this program as an administrator* (also check *Change settings for all users*), or the same option in a shortcut's *Advanced* settings. Every manual start then shows a UAC prompt; autostart does not.
+
+**Autostart as administrator.** When the app runs as administrator, *Settings → Application → Start with Windows* (and the tray menu item) creates a **Task Scheduler** task `SM809Control` with `schtasks` instead of the `Run` entry; the settings show a note about it. The task:
+- starts at your logon, *Run with highest privileges*, 5 s delay, without a UAC prompt;
+- has **no execution time limit** (the scheduler's default would stop the app after 72 hours), runs on battery, normal process priority (the default is below normal);
+- is rewritten at every elevated start (the exe may have moved); an old `Run` entry is moved over to the task.
+
+Unticking the option while running as administrator removes the task. A normal-level app cannot change the task — the checkbox is greyed out with a hint; start the app as administrator once to turn autostart off or back to the normal `Run` entry. Manual removal: `schtasks /Delete /TN SM809Control /F` in an administrator console, or Task Scheduler → Task Scheduler Library → *SM809Control* → Delete.
 
 ## Supported devices
 
@@ -205,9 +228,32 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md): status report, all commands, button co
 **Про программный режим.**
 - Без запущенной программы программные кнопки молчат. Включите «Настройки → Кнопки → При выходе из программы возвращать аппаратную раскладку», если мышь должна работать как обычно после закрытия программы (одна запись при каждом выходе и запуске).
 - При включённом японском методе ввода клавиши International на кнопках 14–16 может перехватывать IME раньше программы; если мешает, отметьте эти кнопки аппаратными.
-- Программы, запущенные от администратора, не получают нажатия от обычной программы (ограничение Windows UIPI). Чтобы действия работали в них, запустите SM809 Control от администратора.
+- Программы, запущенные от администратора (некоторые игры и лаунчеры), — особый случай, см. [Права администратора](#права-администратора).
 - Смена режима или типа кнопки один раз записывает раскладку в мышь.
 
 Данные хранятся в `%APPDATA%\SM809Control`.
+
+## Права администратора
+
+SM809 Control не нужны права администратора. Настройки мыши, DPI, подсветка, заряд и **аппаратные** кнопки работают одинаково — всё это хранится в мыши. Права важны только для **программных кнопок** в программах, которые сами запущены от администратора (некоторые игры, лаунчеры с античитом, диспетчер задач, установщики, консоль администратора).
+
+**SM809 Control запущен без прав, а программа на переднем плане — от администратора** (механизм Windows UIPI — изоляция привилегий интерфейса):
+- Windows не передаёт клавиатурный ввод этой программы в перехватчик клавиатуры SM809 Control (Microsoft описывает то же для переназначения клавиш в PowerToys). Клавиша-носитель программной кнопки (F13–F24, International 1/4/5) **не перехватывается**: она доходит до программы как есть, а действие кнопки не выполняется. Большинство программ такие клавиши игнорирует, но в игре их можно назначить.
+- Поэтому в таком окне не выполняется ни одно программное действие — ни клавиши, ни текст, ни макросы, ни «Запустить». Ввод от программы без прав Windows туда и так бы не пропустил.
+- Аппаратные кнопки (в том числе клавиши, записанные в мышь) работают как обычно: мышь сама является клавиатурой. Профили по программе на переднем плане переключаются правильно.
+- Стоит переключиться в обычное окно — всё снова работает: ограничение действует, только пока впереди окно администратора.
+
+**SM809 Control запущен от администратора** — программные кнопки работают во всех окнах. Два побочных эффекта:
+- Программы, запущенные действием «Запустить» (и ссылки из окна программы), получают права администратора. Ссылка обычно открывается в уже запущенном браузере, и его права не меняются.
+- Обычный автозапуск Windows (раздел реестра `Run`) **молча пропускает** программы, которым нужны права: в диспетчере задач → «Автозагрузка» запись видна и «Включена», но ничего не стартует. См. ниже.
+
+**Как запускать от администратора:** свойства exe → «Совместимость» → «Запускать эту программу от имени администратора» (и «Изменить параметры для всех пользователей»), либо то же в свойствах ярлыка → «Дополнительно». При ручном запуске будет запрос UAC, при автозапуске — нет.
+
+**Автозапуск от администратора.** Если программа запущена от администратора, «Настройки → Программа → Запускать вместе с Windows» (и пункт в меню трея) создаёт командой `schtasks` задачу **Планировщика заданий** `SM809Control` вместо записи `Run`; в настройках об этом есть строка. Задача:
+- запускается при входе в систему, «с наивысшими правами», через 5 с, без запроса UAC;
+- **без ограничения времени работы** (по умолчанию Планировщик остановил бы программу через 72 часа), работает от батареи, с обычным приоритетом процесса (по умолчанию — ниже обычного);
+- перезаписывается при каждом запуске от администратора (exe мог переехать); старая запись `Run` переносится в задачу.
+
+Снятая галочка при запуске от администратора удаляет задачу. Программа без прав задачу изменить не может — галочка неактивна, рядом подсказка; чтобы выключить автозапуск или вернуться к обычной записи `Run`, один раз запустите программу от администратора. Вручную: `schtasks /Delete /TN SM809Control /F` в консоли администратора или Планировщик заданий → Библиотека → *SM809Control* → Удалить.
 
 **Сборка и выпуск:** см. разделы [Building](#building) и [Releasing](#releasing) выше. Чтобы выпустить версию, создайте на GitHub релиз с тегом `vX.Y.Z`, совпадающим с `appVersion`: сборка сама приложит `SM809Control_vX.Y.Z.exe`.

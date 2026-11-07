@@ -108,7 +108,7 @@ function openPalette(anchor, current, onPick) {
 // ---------------------------------------------------------------------------
 // state
 
-let S = null;             // {data, state, autostart, version}
+let S = null;             // {data, state, autostart, autostartMode, elevated, version}
 let tab = store.get('tab', 'buttons');
 let editId = null;        // profile being edited
 let draft = null;         // working copy of that profile
@@ -1208,7 +1208,11 @@ function viewSettings(v) {
     ${chk('notifyLink', L('Сообщать о потере и восстановлении связи', 'Notify when the connection is lost or restored'))}
     <p class="muted small">${L('0 — не предупреждать.', '0 = no warning.')}</p></div>
   <div class="card"><h2>${L('Программа', 'Application')}</h2>
-    <label class="check"><input type="checkbox" id="auto" ${autostartDraft ? 'checked' : ''}><span>${L('Запускать вместе с Windows', 'Start with Windows')}<small>${L('в трее, без окна', 'in the tray, without the window')}</small></span></label>
+    <label class="check"><input type="checkbox" id="auto" ${autostartDraft ? 'checked' : ''} ${!S.elevated && S.autostartMode === 'task' ? 'disabled' : ''}><span>${L('Запускать вместе с Windows', 'Start with Windows')}<small>${L('в трее, без окна', 'in the tray, without the window')}</small></span></label>
+    ${S.elevated ? `<p class="muted small">🛡 ${L('Программа запущена с правами администратора, поэтому автозапуск создаётся командой schtasks как задача «SM809Control» в Планировщике заданий (с наивысшими правами): обычный автозапуск Windows такие программы пропускает.',
+      'The app runs as administrator, so autostart is created with schtasks as the task "SM809Control" in Task Scheduler (highest privileges): the normal Windows autostart skips such programs.')}</p>`
+    : S.autostartMode === 'task' ? `<p class="muted small">🛡 ${L('Автозапуск настроен через Планировщик заданий с правами администратора. Изменить его можно, только запустив программу от имени администратора.',
+      'Autostart is set up as a Task Scheduler task with administrator rights. To change it, run the app as administrator.')}</p>` : ''}
     ${num('scanSeconds', L('Проверять запущенные программы раз в, с', 'Check running programs every, s'), 1, 30)}
     ${chk('debug', L('Вести журнал', 'Write a log'), L('файл sm809control.log в %APPDATA%\\SM809Control', 'file sm809control.log in %APPDATA%\\SM809Control'))}
 </div>
