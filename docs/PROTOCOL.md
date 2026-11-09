@@ -74,7 +74,7 @@ The firmware's report-6 dispatcher (`switch` on the command byte, 0..17) has two
 | cmd | effect |
 |---|---|
 | 9 | `config[0x78] = D[4]` — key debounce threshold in scan ticks (factory value 2) |
-| 10 | `config[0x7B] = D[4]` — purpose unknown |
+| 10 | `config[0x7B] = D[4]` — stored and saved, never read by the stock firmware; used by the lighting-zones patch below |
 
 Command 9 is offered by SM809 Control as an experimental setting (Settings → Mouse); command 10 is not used.
 
@@ -109,7 +109,7 @@ Feature report `0xBF` (136 bytes incl. ID, wired USB interface 1) is the firmwar
 | 0x77 | sleep minutes |
 | 0x78 | key debounce (cmd 9) |
 | 0x7A | sensor type |
-| 0x7B | cmd 10 value |
+| 0x7B | cmd 10 value (lighting zones with the patched firmware) |
 | 0x7C–0x7E | lighting mode, brightness/speed, direction |
 | 0x7F | wake on movement |
 | 0x80 | lighting off while moving |
@@ -121,3 +121,23 @@ Slot index `i = button − 1` (button 16 uses slot 12 → i = 11). `i < 8` → `
 ### Cursor moves in macros
 
 The firmware's macro player handles event types `0x4_` (X) and `0x5_` (Y) by writing the signed value into the motion accumulators (`0x400AA8/0x400AAA`), but it does not raise the "motion pending" flag that the sensor path sets, and the accumulators are cleared/overwritten before a report is built. In practice the move is lost (confirmed on a real mouse; the vendor web driver has the same result). SM809 Control therefore disables cursor-move events in the macro editor.
+
+## Lighting hardware and the zones firmware patch
+
+What the stock firmware drives:
+
+- **Side buttons** — a separate LED controller on UART (TX P1.6), powered through P3.3 (low = on). The MCU only sends 2-byte commands: `{0x70, mode}` (lighting mode, `config[0x7C]`), `{0x70, 8}` and `{0x90, n}` for status indications. Mode 0 (and "off while moving", sleep) sends `{0x70, 0}`, drives P1.6 low and cuts the power (P3.3 high).
+- **Wheel and logo** — four RGB LEDs on six hardware PWM channels, multiplexed by two select lines (P0.5, P3.5). Buffer `0x40158C`, 4 × RGB:
+  - `[0..2]` logo — a hard-coded 7-colour cycle (red, green, blue, yellow, cyan, magenta, white; table at `0x3F59C`) with breathing;
+  - `[3..5]`, `[6..8]` wheel — the colour of the current DPI level; `[6..8]` also blinks red at critical battery (independent of `[3..5]`);
+  - `[9..11]` connection / charging status.
+  Lighting mode 0, "off while moving" and sleep blank all of them.
+
+No command switches zones individually. The **zones patch** (`SM809_Mouse_IAP_zones`, built on top of the d64 LED-command fix) adds 56 bytes of code at `0x41C00` (free space at the end of the image) and two `bl` hooks:
+
+| Hook | Replaces | Does |
+|---|---|---|
+| `0x2DC74` | `ldr r0,=0x4015F8; ldrb r0,[r0,#0x1C]` (mode for the side controller) | returns 0 when `config[0x7B]` bit 0 is set → side controller off, other zones untouched |
+| `0x2D4D2` | `ldr r0,[sp,#0xC]; cmp r0,#1` (after the wheel/logo colours are computed) | bit 1 → zero `[3..5]` (wheel off; the critical-battery blink in `[6..8]` stays); bit 2 → `[0..2]` = DPI colour slot 8 (`config[0x6F..0x71]`, static colour, black = logo off) |
+
+`config[0x7B]` is 0 in the factory defaults, so the patched firmware looks exactly like the stock one until the byte is written. With the stock firmware the byte and colour slot 8 have no effect. The app detects the patch by reading `0x41C00` over the cable (0xBF report).

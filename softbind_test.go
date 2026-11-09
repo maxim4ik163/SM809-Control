@@ -180,7 +180,7 @@ func TestDeviceProfileSignature(t *testing.T) {
 	set := softSettings(defaultHW(p))
 	sig := func(s Settings) map[string]string {
 		m := map[string]string{}
-		for _, c := range buildCommands(deviceProfile(p, s), func(string) *Macro { return nil }, 0x11) {
+		for _, c := range buildCommands(deviceProfile(p, s), func(string) *Macro { return nil }, 0x11, false) {
 			m[c.key] = signature(c)
 		}
 		return m

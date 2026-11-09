@@ -21,7 +21,7 @@ package main
 //	0x77        sleep minutes             (cmd 7)
 //	0x78        key debounce (scan ticks) (cmd 9 — not used by vendor tools)
 //	0x7A        sensor type
-//	0x7B        set by cmd 10 (purpose unknown)
+//	0x7B        lighting zones (cmd 10; ignored by stock firmware, read by the zones patch)
 //	0x7C..0x7E  lighting mode, brightness/speed, direction (cmd 6)
 //	0x7F        wake on movement          (cmd 7)
 //	0x80        lighting off while moving (cmd 7)
@@ -49,6 +49,7 @@ const (
 	cfgSleep  = 0x77
 	cfgDebnc  = 0x78
 	cfgSType  = 0x7A
+	cfgZones  = 0x7B
 	cfgLight  = 0x7C
 	cfgWake   = 0x7F
 	cfgLOff   = 0x80
@@ -73,6 +74,8 @@ type MouseMemory struct {
 	Config   []byte         // cfgLen bytes from cfgAddr
 	Macros   map[int][]byte // button number (1-based) → raw slot
 	Debounce int            `json:"debounce"`
+	Zones    int            // raw zones byte (config 0x7B)
+	ZonesFW  bool           // the zones firmware patch is present
 }
 
 // decodeMacroEvents is the inverse of EncodeMacroEvents. Key events carry
@@ -241,6 +244,16 @@ func decodeMouse(mem *MouseMemory, sensorType int) (*Profile, []*Macro, error) {
 		p.Lighting = 2
 	}
 	mem.Debounce = int(c[cfgDebnc])
+	// lighting zones (patched firmware); the logo colour lives in DPI colour slot 8
+	z := int(c[cfgZones])
+	mem.Zones = z
+	p.SideOff, p.WheelOff = z&zoneSideOff != 0, z&zoneWheelOff != 0
+	lc := cfgColors + 3*logoSlot
+	if c[lc]|c[lc+1]|c[lc+2] == 0 {
+		p.LogoOff, p.LogoColor = true, defaultLogoColor
+	} else {
+		p.LogoColor = p.DPIColors[logoSlot]
+	}
 
 	// macros
 	var macros []*Macro

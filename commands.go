@@ -30,7 +30,8 @@ func validRate(r int) bool {
 	return false
 }
 
-func buildCommands(p *Profile, macroOf func(string) *Macro, sensor int) []devCommand {
+// zones: the mouse runs the patched firmware with switchable lighting zones.
+func buildCommands(p *Profile, macroOf func(string) *Macro, sensor int, zones bool) []devCommand {
 	var codes [numButtons]KeyCode
 	type mUp struct {
 		btn int
@@ -51,6 +52,13 @@ func buildCommands(p *Profile, macroOf func(string) *Macro, sensor int) []devCom
 	var colors [8]uint32
 	for i, c := range p.DPIColors {
 		colors[i] = parseColor(c, 0xEA5E56)
+	}
+	if zones {
+		// slot 8 is never a DPI level (max 6); the patched firmware shows it on the logo
+		colors[logoSlot] = 0
+		if !p.LogoOff {
+			colors[logoSlot] = parseColor(p.LogoColor, 0xFFFFFF)
+		}
 	}
 	cmds := []devCommand{
 		{"keys", 2 + 2*b2i(len(macros) > 0), func(seq func() byte) [][]byte {
@@ -80,6 +88,10 @@ func buildCommands(p *Profile, macroOf func(string) *Macro, sensor int) []devCom
 		}},
 		{"light", 1, func(seq func() byte) [][]byte { return [][]byte{EncodeLighting(p.Lighting, seq)} }},
 	}
+	if zones {
+		v := zonesValue(p)
+		cmds = append(cmds, zonesCommand(v))
+	}
 	return cmds
 }
 
@@ -89,7 +101,6 @@ func b2i(b bool) int {
 	}
 	return 0
 }
-
 
 func parseHex(s string, def uint32) uint32 { return parseColor(s, def) }
 
@@ -114,7 +125,6 @@ func parseColor(s string, def uint32) uint32 {
 	}
 	return v
 }
-
 
 const (
 	debounceFactory = 2
@@ -154,3 +164,29 @@ func plausibleStatus(d []byte) bool {
 	_, known := sensors[int(sensor)]
 	return known
 }
+
+// ---------- lighting zones (patched firmware) ----------
+
+const (
+	logoSlot     = 7 // DPI colour slot used for the logo colour
+	zoneSideOff  = 1
+	zoneWheelOff = 2
+	zoneLogoFix  = 4
+)
+
+func zonesValue(p *Profile) int {
+	v := zoneLogoFix
+	if p.SideOff {
+		v |= zoneSideOff
+	}
+	if p.WheelOff {
+		v |= zoneWheelOff
+	}
+	return v
+}
+
+func zonesCommand(v int) devCommand {
+	return devCommand{"zones", 1, func(seq func() byte) [][]byte { return [][]byte{EncodeZones(v, seq)} }}
+}
+
+func zonesSignature(v int) string { return signature(zonesCommand(v)) }
