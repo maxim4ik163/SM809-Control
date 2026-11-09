@@ -43,13 +43,18 @@ jobs:
         run: |
           GOOS=windows GOARCH=amd64 go vet .
           GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-H windowsgui -s -w" -o "${{ steps.ver.outputs.exe }}" .
+          GOOS=windows GOARCH=amd64 go build -trimpath -ldflags "-s -w" -o SM809_IAP_zones_patcher.exe ./tools/iap-patch
       - uses: actions/upload-artifact@v4
         with:
           name: SM809Control_v${{ steps.ver.outputs.version }}
-          path: ${{ steps.ver.outputs.exe }}
+          path: |
+            ${{ steps.ver.outputs.exe }}
+            SM809_IAP_zones_patcher.exe
       - name: Attach to release
         if: github.event_name == 'release'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
-          files: ${{ steps.ver.outputs.exe }}
+          files: |
+            ${{ steps.ver.outputs.exe }}
+            SM809_IAP_zones_patcher.exe
