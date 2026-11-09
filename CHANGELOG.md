@@ -6,17 +6,65 @@ Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/re
 
 **English**
 
-- **Lighting zones (patched firmware).** The stock firmware has no way to switch the lighting zones separately: mode "Off" turns off everything, and the logo always cycles through 7 colours. A small firmware patch (56 bytes, on top of the side-light fix) reads a byte the stock firmware stores but never uses (command 10) and DPI colour slot 8. With it the *Lighting* tab gets a *Lighting zones* card: side buttons on/off (their modes work as before), wheel on/off (the critical-battery blink stays), logo off or a fixed colour of your choice. Works over cable, dongle and Bluetooth; switching is per profile and written diff-only like everything else.
-- The patched firmware is detected automatically when the settings are read from the mouse over the cable; it can also be set by hand in *Settings → Experimental options*. With the stock firmware these settings do nothing.
-- **`SM809_IAP_zones_patcher.exe`** (attached to the release) turns the vendor updater `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` into `SM809_Mouse_IAP_zones.exe`: zones firmware with the side-light fix, English interface, forced update, 30 s reconnect wait. Flashing (with any updater) erases the mouse settings and the dongle pairing: re-plug the dongle, then read the settings from the mouse.
-- docs/PROTOCOL.md: how the three lighting zones are driven (LED controller on UART for the side buttons, multiplexed PWM RGB LEDs for the wheel and the logo) and what the patch changes.
+This release is for mice flashed with the **zones firmware** — a modified version of the stock firmware, made with the included patcher. With the stock firmware everything works as in 2.2.0.
+
+**What the zones firmware changes**
+
+1. **Side-light fix.** The side buttons have their own small LED controller; the mouse only tells it which effect to show. The stock firmware sends that command too early after switching the controller on (after power-on, wake-up, reconnect), while the controller is still starting. The command is lost and the side buttons fall back to the controller's default rainbow effect (*Colorful streaming*) instead of the chosen mode — until the next time the mouse resends the mode, e.g. when it is moved after idling. The fix waits longer before sending and sends the command once. On some mice this happens constantly, on others only now and then.
+2. **Lighting zones.** The stock firmware cannot switch the lighting zones separately: mode *Off* turns everything off, the wheel always shows the DPI colour and the logo always cycles through 7 colours. The zones firmware adds:
+   - side buttons on/off — when on, the mode chosen on the *Lighting* tab works as before;
+   - wheel on/off — the red blink at critical battery stays;
+   - logo off, or a fixed colour of your choice.
+
+   The settings use a byte the stock firmware stores but never reads and the 8th DPI colour slot (the app uses at most 6 DPI levels), so no new commands are needed. The patch adds 56 bytes of code; nothing else in the firmware is changed.
+
+**In the app**
+
+- A *Lighting zones* card on the *Lighting* tab. Zones are part of the profile and, like everything else, written to the mouse only when they change.
+- The zones firmware is detected when the settings are read from the mouse over the cable (*Settings → Mouse → Read settings from the mouse*); it can also be switched on by hand in *Settings → Experimental options*. With the stock firmware these settings do nothing.
+
+**`SM809_IAP_zones_patcher.exe`**
+
+The firmware itself is not distributed here. The patcher takes the vendor updater `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` (it checks the exact file) and creates `SM809_Mouse_IAP_zones.exe` next to it — the same updater with the zones firmware, English interface, no "already up to date" refusal and a 30 s wait for the mouse to reconnect after flashing. Drag the vendor updater onto the patcher.
+
+**Flashing — read before you start**
+
+- Close SM809 Control, the vendor software and the web driver; connect the mouse with the cable.
+- **Flashing erases the mouse settings and the dongle pairing** — with any updater, the stock one too. Afterwards the 2.4 GHz indicator blinks: unplug the dongle and plug it back in, it pairs with the mouse on its own. Then in SM809 Control read the settings from the mouse over the cable and write your profile.
+- To go back, flash with the original vendor updater.
+
+Firmware details: [docs/PROTOCOL.md](docs/PROTOCOL.md#lighting-hardware-and-the-zones-firmware-patch).
 
 **Русский**
 
-- **Зоны подсветки (пропатченная прошивка).** Заводская прошивка не умеет выключать зоны по отдельности: режим «Выкл» гасит всё, а логотип всегда переливается 7 цветами. Небольшой патч прошивки (56 байт, поверх фикса боковой подсветки) читает байт, который заводская прошивка сохраняет, но не использует (команда 10), и 8-й слот цветов DPI. С ним на вкладке «Подсветка» появляется блок «Зоны подсветки»: боковые кнопки вкл/выкл (их режимы работают как раньше), колесо вкл/выкл (мигание при критическом заряде остаётся), логотип выключен или постоянный цвет на выбор. Работает по кабелю, через донгл и по Bluetooth; задаётся в профиле и пишется только при изменении, как всё остальное.
-- Пропатченная прошивка определяется автоматически при чтении настроек из мыши по кабелю; её можно отметить и вручную в «Настройки → Экспериментальные опции». С заводской прошивкой эти настройки ни на что не влияют.
-- **`SM809_IAP_zones_patcher.exe`** (в релизе) делает из фирменного прошивальщика `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` файл `SM809_Mouse_IAP_zones.exe`: прошивка с зонами и фиксом боковой подсветки, английский интерфейс, прошивка без проверки версии, ожидание переподключения 30 с. Прошивка (любым прошивальщиком) стирает настройки мыши и привязку к донглу: переподключите донгл и прочитайте настройки из мыши.
-- docs/PROTOCOL.md: как управляются три зоны подсветки (контроллер боковых кнопок по UART, мультиплексированные RGB-светодиоды на ШИМ для колеса и логотипа) и что меняет патч.
+Этот выпуск для мышей с **прошивкой «зоны»** — изменённой заводской прошивкой, которую делает патчер из релиза. С заводской прошивкой всё работает как в 2.2.0.
+
+**Что меняет прошивка «зоны»**
+
+1. **Исправление боковой подсветки.** У боковых кнопок свой маленький контроллер светодиодов; мышь только сообщает ему, какой эффект показывать. Заводская прошивка отправляет эту команду слишком рано после включения контроллера (при включении, пробуждении, переподключении), пока он ещё запускается. Команда теряется, и боковые кнопки показывают радужный эффект контроллера по умолчанию («Цветной поток») вместо выбранного режима — пока мышь не отправит режим ещё раз, например когда её сдвинут после простоя. Исправление ждёт дольше и отправляет команду один раз. На одних мышах это происходит постоянно, на других изредка.
+2. **Зоны подсветки.** Заводская прошивка не умеет выключать зоны по отдельности: режим «Выкл» гасит всё, колесо всегда показывает цвет DPI, логотип всегда переливается 7 цветами. Прошивка «зоны» добавляет:
+   - боковые кнопки вкл/выкл — когда включены, режим с вкладки «Подсветка» работает как раньше;
+   - колесо вкл/выкл — красное мигание при критическом заряде остаётся;
+   - логотип выключен или постоянный цвет на выбор.
+
+   Настройки хранятся в байте, который заводская прошивка сохраняет, но не читает, и в 8-м слоте цветов DPI (программа использует не больше 6 уровней), новых команд не нужно. Патч добавляет 56 байт кода, остальная прошивка не меняется.
+
+**В программе**
+
+- Блок «Зоны подсветки» на вкладке «Подсветка». Зоны — часть профиля и, как всё остальное, записываются в мышь только при изменении.
+- Прошивка «зоны» определяется при чтении настроек из мыши по кабелю («Настройки → Мышь → Прочитать настройки из мыши»); её можно включить и вручную в «Настройки → Экспериментальные опции». С заводской прошивкой эти настройки ни на что не влияют.
+
+**`SM809_IAP_zones_patcher.exe`**
+
+Саму прошивку мы не распространяем. Патчер берёт фирменный прошивальщик `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` (проверяет, что это именно он) и создаёт рядом `SM809_Mouse_IAP_zones.exe` — тот же прошивальщик с прошивкой «зоны», английским интерфейсом, без отказа «прошивка уже актуальна» и с ожиданием переподключения мыши 30 с. Перетащите фирменный прошивальщик на патчер.
+
+**Прошивка — прочитайте до начала**
+
+- Закройте SM809 Control, фирменную программу и веб-драйвер; подключите мышь кабелем.
+- **Прошивка стирает настройки мыши и привязку к донглу** — любым прошивальщиком, заводским тоже. После неё мигает индикатор 2,4 ГГц: выньте донгл и вставьте обратно — он сам привяжет мышь. Затем в SM809 Control прочитайте настройки из мыши по кабелю и запишите свой профиль.
+- Чтобы вернуться, прошейте оригинальным фирменным прошивальщиком.
+
+Подробности о прошивке: [docs/PROTOCOL.md](docs/PROTOCOL.md#lighting-hardware-and-the-zones-firmware-patch).
 
 ## 2.2.0 — 2026-11-09
 
