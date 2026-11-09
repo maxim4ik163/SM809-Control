@@ -277,8 +277,3 @@ button.modechip { cursor: pointer; }
 .numk { color: #b3261e; }
 .numk.soft { color: var(--accent2); }
 .nowrap { display: inline-flex; gap: 10px; align-items: center; white-space: nowrap; }
-
-.zrow { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
-.zrow > span { flex: 1; }
-.zrow > span small { display: block; color: var(--muted); font-size: 12px; }
-p.warn { color: #e0b050; }

@@ -27,7 +27,7 @@ An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gamin
 - **Buttons per program.** A rule "program → profile" switches the software buttons the instant that program's window comes to the front.
 - **Hardware buttons.** Any function on the 15 remappable buttons: mouse buttons, key or combination, media keys, editing shortcuts, DPI +/−/cycle, DPI lock (sniper), rapid fire with interval and count, disable, lighting toggle, firmware macro. The main left button is locked so the mouse can never lose its click.
 - **DPI.** 1 to 6 levels, any value per level (limits and step follow the sensor, e.g. PAW3311: 200–24000 in steps of 100), a colour per level, start level.
-- **Lighting.** All 11 modes supported by the firmware. With a patched firmware (see [docs/PROTOCOL.md](docs/PROTOCOL.md#lighting-hardware-and-the-zones-firmware-patch)): side buttons and wheel switched on/off separately, a fixed logo colour of your choice or logo off.
+- **Lighting.** All 11 modes supported by the firmware.
 - **Performance.** Polling rate (the list follows the connection), lift-off distance (LOD 1/2 mm, missing in the vendor Windows app), sleep timer, wake on movement, lighting off while moving, angle snapping, Motion Sync, ripple control.
 - **Macros.** Recorder (keys and mouse buttons, real or fixed delays) and manual editor (press / release / delay, type a whole text, reorder). Firmware macros are encoded exactly like the vendor driver does, with a memory meter; software-mode macros have no such limits.
 - **Profiles.** Unlimited, stored on the PC. Only the current one is written to the mouse, and **only the settings that differ**, to spare the flash memory.
@@ -192,7 +192,7 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md): status report, all commands, button co
 - **Кнопки по программам.** Правило «программа → профиль» переключает программные кнопки в момент, когда окно программы становится активным.
 - **Аппаратные кнопки:** любая функция на 15 переназначаемых кнопок — кнопки мыши, клавиша или сочетание, мультимедиа, правка, DPI, фиксация DPI, «огонь», отключение, подсветка, макрос прошивки. Основная левая кнопка заблокирована.
 - **DPI:** 1–6 уровней с любыми значениями, цвет каждого уровня, стартовый уровень.
-- **Подсветка:** все 11 режимов прошивки. С пропатченной прошивкой (см. [docs/PROTOCOL.md](docs/PROTOCOL.md#lighting-hardware-and-the-zones-firmware-patch)): боковые кнопки и колесо включаются и выключаются отдельно, логотип — постоянный цвет на выбор или выключен.
+- **Подсветка:** все 11 режимов прошивки.
 - **Производительность:** частота опроса, высота отрыва LOD (её нет в фирменной программе), сон, пробуждение движением, angle snapping, Motion Sync, Ripple.
 - **Макросы:** запись и ручной редактор, ввод целого текста. Макросы прошивки кодируются точно как в официальном драйвере, с индикатором памяти; у макросов программного режима этих ограничений нет.
 - **Профили:** без ограничения количества, хранятся на компьютере. В мышь пишется только то, что отличается.

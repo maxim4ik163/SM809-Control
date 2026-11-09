@@ -48,12 +48,6 @@ type Profile struct {
 	// Soft: actions of buttons 1..11 when they are software buttons
 	// (software mode); Kind "" = nothing.
 	Soft [softSlots]SoftBinding `json:"soft"`
-
-	// Lighting zones — only with the patched firmware (Settings.ZonesFW).
-	SideOff   bool   `json:"sideOff"`
-	WheelOff  bool   `json:"wheelOff"`
-	LogoOff   bool   `json:"logoOff"`
-	LogoColor string `json:"logoColor"` // #rrggbb
 }
 
 type Rule struct {
@@ -90,10 +84,6 @@ type Settings struct {
 	// when DebounceSet; factory value is 2.
 	DebounceSet bool `json:"debounceSet"`
 	Debounce    int  `json:"debounce"` // "ru" or "en"; chosen from the system language on first run
-
-	// The mouse runs the patched firmware with switchable lighting zones
-	// (set by hand or detected when reading the mouse memory over the cable).
-	ZonesFW bool `json:"zonesFw"`
 
 	BTPaths []string `json:"btPaths"` // remembered Bluetooth HID paths → BT1, BT2
 
@@ -217,8 +207,6 @@ func defaultButtons() [16]ButtonAssign {
 	}
 }
 
-const defaultLogoColor = "#ffffff"
-
 var defaultDPIColors = [8]string{"#ff0000", "#0000ff", "#00ff00", "#ffff00", "#00ffff", "#ff00ff", "#ff6b6b", "#4ecdc4"}
 
 func newProfile(name string, sensorType int) *Profile {
@@ -236,7 +224,6 @@ func newProfile(name string, sensorType int) *Profile {
 		MoveWakeup: true,
 		MotionSync: true,
 		Lighting:   2,
-		LogoColor:  defaultLogoColor,
 	}
 	for i := range p.DPILevels {
 		if i < len(si.Default) {
@@ -337,11 +324,6 @@ func (s *Store) fixup() {
 	if s.profile(d.Settings.BaseProfile) == nil {
 		d.Settings.BaseProfile = d.Settings.DefaultProfile
 	}
-	for _, p := range d.Profiles {
-		if p.LogoColor == "" {
-			p.LogoColor = defaultLogoColor
-		}
-	}
 	for i := range d.Rules {
 		d.Rules[i].Exe = lower(strings.TrimSpace(d.Rules[i].Exe))
 	}
@@ -385,10 +367,8 @@ func writeJSONAtomic(path string, v any) error {
 	return os.Rename(tmp, path)
 }
 
-func (s *Store) saveData() error { return writeJSONAtomic(filepath.Join(s.dir, "data.json"), s.data) }
-func (s *Store) saveState() error {
-	return writeJSONAtomic(filepath.Join(s.dir, "device.json"), s.state)
-}
+func (s *Store) saveData() error  { return writeJSONAtomic(filepath.Join(s.dir, "data.json"), s.data) }
+func (s *Store) saveState() error { return writeJSONAtomic(filepath.Join(s.dir, "device.json"), s.state) }
 
 func (s *Store) profile(id string) *Profile {
 	for _, p := range s.data.Profiles {
@@ -441,12 +421,6 @@ func validateProfile(p *Profile, sensorType int) error {
 	}
 	if p.Lighting < 0 || p.Lighting >= len(lightingModes) {
 		return errors.New(T("неизвестный режим подсветки", "unknown lighting mode"))
-	}
-	if p.LogoColor == "" {
-		p.LogoColor = defaultLogoColor
-	}
-	if parseColor(p.LogoColor, 1<<24) == 1<<24 {
-		return errors.New(T("неверный цвет логотипа", "invalid logo colour"))
 	}
 	hasLeft := false
 	for i, b := range p.Buttons {

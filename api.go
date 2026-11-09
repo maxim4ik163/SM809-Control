@@ -43,8 +43,6 @@ type mouseReadResult struct {
 	Profile     *Profile `json:"profile"`
 	Macros      []*Macro `json:"macros"`
 	Debounce    int      `json:"debounce"`
-	ZonesFW     bool     `json:"zonesFw"`     // zones firmware detected in the mouse
-	Zones       bool     `json:"zones"`       // zone settings were compared
 	Compared    string   `json:"compared"`    // name of the profile it was compared with
 	Differences []string `json:"differences"` // command groups that differ from it
 }
@@ -83,9 +81,7 @@ func (a *API) notify() {
 	a.subMu.Unlock()
 }
 
-type apiError struct {
-	Error string `json:"error"`
-}
+type apiError struct{ Error string `json:"error"` }
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
@@ -662,7 +658,6 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		if s.Debounce < 0 || s.Debounce > debounceMax {
 			s.Debounce = debounceFactory
 		}
-		zonesChanged := s.ZonesFW != old.ZonesFW
 		debounceChanged := s.DebounceSet != old.DebounceSet || (s.DebounceSet && s.Debounce != old.Debounce)
 		if s.ScanSeconds < 1 {
 			s.ScanSeconds = 1
@@ -676,14 +671,14 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 				err = e
 			}
 		}
-		if (debounceChanged && s.DebounceSet) || (zonesChanged && s.ZonesFW) {
+		if debounceChanged && s.DebounceSet {
 			// diff-only apply of the profile that is on the mouse → just the debounce command
 			st.mu.Lock()
 			synced := st.state.Synced
 			st.mu.Unlock()
 			if synced {
 				cur := a.stateView().Current
-				go func() { _ = a.eng.Apply(cur, false, "settings", false, true); a.notify() }()
+				go func() { _ = a.eng.Apply(cur, false, "debounce", false, true); a.notify() }()
 			}
 		}
 		return map[string]bool{"ok": true}, err
@@ -755,15 +750,7 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		st.mu.Lock()
-		zones := st.data.Settings.ZonesFW || mem.ZonesFW
-		if mem.ZonesFW && !st.data.Settings.ZonesFW {
-			st.data.Settings.ZonesFW = true // detected: the zones firmware is installed
-			_ = st.saveData()
-		}
-		st.mu.Unlock()
-		res := &mouseReadResult{Profile: p, Macros: macros, Debounce: mem.Debounce, Differences: []string{},
-			ZonesFW: mem.ZonesFW, Zones: zones}
+		res := &mouseReadResult{Profile: p, Macros: macros, Debounce: mem.Debounce, Differences: []string{}}
 		mo := func(id string) *Macro {
 			for _, m := range macros {
 				if m.ID == id {
@@ -774,14 +761,14 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		}
 		sensor := a.eng.sensorType()
 		mouseSig := map[string]string{}
-		for _, c := range buildCommands(p, mo, sensor, zones) {
+		for _, c := range buildCommands(p, mo, sensor) {
 			mouseSig[c.key] = signature(c)
 		}
 		cur := a.stateView().Current
 		st.mu.Lock()
 		if cp := st.profile(cur); cp != nil {
 			res.Compared = cp.Name
-			for _, c := range buildCommands(deviceProfile(cp, st.data.Settings), st.macro, sensor, zones) {
+			for _, c := range buildCommands(deviceProfile(cp, st.data.Settings), st.macro, sensor) {
 				if mouseSig[c.key] != signature(c) {
 					res.Differences = append(res.Differences, c.key)
 				}
@@ -789,9 +776,6 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		}
 		// the mouse is now known exactly: "what was sent" = what is there
 		mouseSig["debounce"] = debounceSignature(mem.Debounce)
-		if zones {
-			mouseSig["zones"] = zonesSignature(mem.Zones) // the raw byte, not the decoded profile
-		}
 		st.state.Sent = mouseSig
 		st.setCarrier(carrierInMemory(p))
 		st.state.Synced = true

@@ -165,7 +165,6 @@ const cmdName = k => ({
   keys: L('кнопки и макросы', 'buttons and macros'), dpi: 'DPI', dpiColors: L('цвета DPI', 'DPI colours'),
   poll: L('частота опроса', 'polling rate'), lod: 'LOD', power: L('энергосбережение', 'power saving'),
   sensor: L('сенсор', 'sensor'), light: L('подсветка', 'lighting'),
-  zones: L('зоны подсветки', 'lighting zones'), debounce: L('антидребезг', 'debounce'),
 }[k] || k);
 
 function renderTop() {
@@ -314,7 +313,6 @@ async function readFromMouse(btn) {
       <p><b>${L('Опрос', 'Polling')}:</b> ${pollLabel(p.pollRate)} · <b>LOD:</b> ${p.lod} ${L('мм', 'mm')}</p>
       <p><b>${L('Сон', 'Sleep')}:</b> ${p.sleepMin} ${L('мин', 'min')} · ${L('пробуждение движением', 'wake on move')}: ${p.moveWakeup ? '✓' : '—'} · ${L('гасить при движении', 'light off moving')}: ${p.moveLightOff ? '✓' : '—'}</p>
       <p><b>${L('Сенсор', 'Sensor')}:</b> angle snap ${p.angleSnap ? '✓' : '—'} · Motion Sync ${p.motionSync ? '✓' : '—'} · Ripple ${p.ripple ? '✓' : '—'}</p>
-      ${r.zones ? `<p><b>${L('Зоны', 'Zones')}:</b> ${L('боковые', 'side')} ${p.sideOff ? '—' : '✓'} · ${L('колесо', 'wheel')} ${p.wheelOff ? '—' : '✓'} · ${L('логотип', 'logo')} ${p.logoOff ? '—' : `<span style="color:${esc(p.logoColor)}">●</span> ${esc(p.logoColor)}`}${r.zonesFw ? '' : ` <span class="muted">(${L('прошивка с зонами не обнаружена', 'zones firmware not detected')})</span>`}</p>` : ''}
       <p class="muted">${L('Антидребезг кнопок (скрытый параметр)', 'Button debounce (hidden setting)')}: ${r.debounce}</p></div></div>
     <p class="muted small">${L('Теперь программа знает точное содержимое мыши: дальше будут записываться только реальные отличия.', 'The app now knows the exact mouse contents: from now on only real differences are written.')}</p>
     <div class="foot"><button data-r="close">${L('Закрыть', 'Close')}</button>
@@ -652,27 +650,8 @@ function viewLight(v) {
   v.innerHTML = `<div class="card"><h2>${L('Подсветка', 'Lighting')}</h2><div class="lgrid">${LIGHT_MODES.map((n, i) =>
     `<div class="lmode ${draft.lighting === i ? 'on' : ''}" data-l="${i}"><div class="sw" style="background:${LIGHT_SWATCH[i] || '#444'}"></div>${esc(nm(n))}</div>`).join('')}</div>
     <p class="muted small">${L('Прошивка SM809 поддерживает только выбор режима: яркость, скорость и цвет эффектов не настраиваются.',
-      'The SM809 firmware only supports choosing a mode: brightness, speed and effect colours cannot be changed.')}</p></div>
-    ${S.data.settings.zonesFw ? zonesCard() : ''}`;
+      'The SM809 firmware only supports choosing a mode: brightness, speed and effect colours cannot be changed.')}</p></div>`;
   v.querySelectorAll('[data-l]').forEach(el => el.onclick = () => { draft.lighting = +el.dataset.l; touch(); renderView(); });
-  v.querySelectorAll('[data-z]').forEach(el => el.onclick = () => { draft[el.dataset.z] = el.dataset.v === '1'; touch(); renderView(); });
-  const lc = v.querySelector('#logoColor');
-  if (lc) lc.onclick = () => openPalette(lc, draft.logoColor, c => { draft.logoColor = c; draft.logoOff = false; touch(); renderView(); });
-}
-
-// lighting zones — patched firmware only (Settings → Experimental options)
-function zonesCard() {
-  const seg = (k, on, off) => `<div class="seg"><button data-z="${k}" data-v="0" class="${draft[k] ? '' : 'on'}">${on}</button><button data-z="${k}" data-v="1" class="${draft[k] ? 'on' : ''}">${off}</button></div>`;
-  const allOff = draft.lighting === 0;
-  return `<div class="card"><h2>${L('Зоны подсветки', 'Lighting zones')}</h2>
-    <div class="zrow"><span>${L('Боковые кнопки', 'Side buttons')}<small>${L('режим выбирается выше', 'the mode is chosen above')}</small></span>${seg('sideOff', L('Вкл', 'On'), L('Выкл', 'Off'))}</div>
-    <div class="zrow"><span>${L('Колесо (DPI)', 'Wheel (DPI)')}<small>${L('цвет текущего уровня DPI; мигание при критическом заряде остаётся', 'colour of the current DPI level; the critical battery blink stays')}</small></span>${seg('wheelOff', L('Вкл', 'On'), L('Выкл', 'Off'))}</div>
-    <div class="zrow"><span>${L('Логотип', 'Logo')}<small>${L('постоянный цвет', 'a fixed colour')}</small></span>
-      <div class="seg"><button data-z="logoOff" data-v="0" class="${draft.logoOff ? '' : 'on'}">${L('Цвет', 'Colour')}</button><button data-z="logoOff" data-v="1" class="${draft.logoOff ? 'on' : ''}">${L('Выкл', 'Off')}</button></div>
-      ${swatch('id="logoColor"', draft.logoColor || '#ffffff')}</div>
-    ${allOff ? `<p class="warn small">${L('Режим подсветки «Выкл» гасит все зоны сразу.', 'Lighting mode “Off” turns off all zones at once.')}</p>` : ''}
-    <p class="muted small">${L('Работает только с пропатченной прошивкой SM809_Mouse_IAP_zones. Режим «Гасить подсветку при движении» и сон по-прежнему гасят все зоны.',
-      'Works only with the patched firmware SM809_Mouse_IAP_zones. “Lighting off while moving” and sleep still turn off all zones.')}</p></div>`;
 }
 
 // ---------------------------------------------------------------------------
@@ -1257,10 +1236,6 @@ function viewSettings(v) {
     <div class="row">${num('debounce', L('Значение (заводское — 2)', 'Value (factory — 2)'), 0, 20)}<button class="small" id="dbFactory">${L('Заводское', 'Factory')}</button></div>
     <p class="muted small">${L('Сколько тактов опроса кнопка должна оставаться в новом положении, прежде чем мышь примет нажатие. Больше — меньше ложных двойных кликов у изношенных кнопок, но клик срабатывает с небольшой задержкой. Меньше — быстрее, но возможен «дребезг». Увеличивайте понемногу (3, 4, 5…), если кнопка начала даблкликать. Отключение галочки ничего не возвращает — чтобы вернуть как было, поставьте 2. Записывается в мышь при сохранении настроек и не меняется при смене профилей.',
       'How many button scan ticks the new state must hold before the mouse accepts it. Higher — fewer false double clicks on worn switches, but a slightly delayed click. Lower — faster, but bounces may get through. Increase step by step (3, 4, 5…) if a button starts double-clicking. Unticking does not restore anything — set 2 to go back. Written to the mouse when settings are saved; not changed by profile switches.')}</p>
-    <h3>${L('Зоны подсветки', 'Lighting zones')}</h3>
-    ${chk('zonesFw', L('В мыши пропатченная прошивка с зонами', 'The mouse runs the patched zones firmware'), L('SM809_Mouse_IAP_zones; определяется автоматически при чтении настроек из мыши по кабелю', 'SM809_Mouse_IAP_zones; detected automatically when the settings are read from the mouse over the cable'))}
-    <p class="muted small">${L('Включает на вкладке «Подсветка» отдельное выключение боковых кнопок и колеса и постоянный цвет логотипа. С заводской прошивкой эти настройки ни на что не влияют. Цвет логотипа хранится в 8-м слоте цветов DPI — фирменный веб-драйвер его перезаписывает.',
-      'Adds separate on/off for the side buttons and the wheel and a fixed logo colour on the Lighting tab. With the stock firmware these settings do nothing. The logo colour is stored in DPI colour slot 8, which the vendor web driver overwrites.')}</p>
 </div>
   </div></div>`;
 

@@ -29,14 +29,13 @@ const (
 	cmdLighting   = 6
 	cmdPower      = 7
 	cmdSensor     = 8
-	cmdDebounce   = 9  // not used by the vendor tools
-	cmdZones      = 10 // byte the stock firmware stores but never reads; used by the zones firmware patch
+	cmdDebounce   = 9 // not used by the vendor tools
 	cmdReset      = 15
 	cmdMacroData  = 16
 	cmdMacroErase = 17
 
 	numButtons   = 16
-	maxDPILevels = 6       // SM809 web config: dpiMaxLevels = 6 (firmware has room for 8)
+	maxDPILevels = 6 // SM809 web config: dpiMaxLevels = 6 (firmware has room for 8)
 	macroMaxData = 15 * 25 // 15 packets x 25 bytes, firmware buffer is 400 bytes
 	macroMaxActs = macroMaxData / 3
 	maxDelayMs   = 4095
@@ -201,14 +200,6 @@ func EncodePower(sleepMin int, moveWakeup, moveLighting bool, seq func() byte) [
 // accepts command 9 but no vendor tool sends it: config[0x78] = value.
 func EncodeDebounce(v int, seq func() byte) []byte {
 	return setCheckSum(pad([]byte{cmdDebounce, seq(), 1, byte(v)}, 30, 0xFF))
-}
-
-// EncodeZones sets the lighting-zones byte (config 0x7B). Stock firmware
-// stores it and ignores it; the patched firmware (SM809_Mouse_IAP_zones)
-// reads bit0 = side buttons off, bit1 = wheel off, bit2 = logo shows the
-// fixed colour from DPI colour slot 8 (otherwise the stock colour cycle).
-func EncodeZones(v int, seq func() byte) []byte {
-	return setCheckSum(pad([]byte{cmdZones, seq(), 1, byte(v)}, 30, 0xFF))
 }
 
 func EncodeSensor(angleSnap, motionSync, ripple bool, seq func() byte) []byte {
