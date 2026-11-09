@@ -133,7 +133,7 @@ What the stock firmware drives:
   - `[9..11]` connection / charging status.
   Lighting mode 0, "off while moving" and sleep blank all of them.
 
-No command switches zones individually. The **zones patch** (`SM809_Mouse_IAP_zones`, built on top of the d64 LED-command fix) adds 56 bytes of code at `0x356D4`, in place of the SDK demo `pwm_mode_timer_demo` that nothing calls (its entry `0x356D2` becomes `bx lr`), and two `bl` hooks:
+No command switches zones individually. The **zones patch** (`SM809_Mouse_IAP_zones`, built on top of the d64 LED-command fix) adds 56 bytes of code at `0x41C00` (erased space at the end of the image) and two `bl` hooks:
 
 | Hook | Replaces | Does |
 |---|---|---|
@@ -142,6 +142,6 @@ No command switches zones individually. The **zones patch** (`SM809_Mouse_IAP_zo
 
 `config[0x7B]` is 0 in the factory defaults, so the patched firmware looks exactly like the stock one until the byte is written. With the stock firmware the byte and colour slot 8 have no effect. The app detects the patch by reading its code over the cable (0xBF report).
 
-Two builds exist: zones1 has the code at `0x41C00` (erased blocks at the end of the image), zones2 at `0x356D4` (end of the image identical to the d64 build). They behave the same.
+The build in use is `SM809_Mouse_IAP_zones` (code at `0x41C00`). A test build `zones2` put the same code at `0x356D4`, over the SDK demo `pwm_mode_timer_demo` that nothing calls; it behaves the same and the app recognises both.
 
 **Flashing wipes the settings.** Every update through the vendor updater (stock firmware too) erases the settings sectors `0x7B000–0x7DFFF`. The mouse boots with factory settings and **without the dongle pairing**: the 5-byte RF address is stored in `config[0x00..0x04]` (written by the pairing code together with the RAM copy, read at boot) and comes back as `FF FF FF FF FF`. The mouse then blinks the 2.4 GHz indicator. Fix: unplug and re-plug the dongle — it pairs with the unpaired mouse on its own (a new address is stored). Then read the settings from the mouse (or write the profile in full), because the app still believes the old profile is stored.

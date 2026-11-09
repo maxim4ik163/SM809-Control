@@ -28,11 +28,11 @@ import (
 )
 
 // First bytes of the code the zones firmware patch adds (see docs/PROTOCOL.md):
-// at 0x356D4 in place of an unused SDK demo (zones2), at 0x41C00 after the
-// end of the image in the first build (zones1).
+// at 0x41C00 (SM809_Mouse_IAP_zones, the build in use) or at 0x356D4 (test
+// build zones2).
 var zonesFWCode = []byte{0x0c, 0x48, 0xc1, 0x7e, 0x00, 0x7f, 0xc9, 0x07, 0x00, 0xd0, 0x00, 0x20, 0x70, 0x47, 0x09, 0x4b}
 
-var zonesFWAddrs = []uint32{0x356D4, 0x41C00}
+var zonesFWAddrs = []uint32{0x41C00, 0x356D4}
 
 const (
 	iapReportID  = 0xBF
