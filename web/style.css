@@ -21,11 +21,11 @@ body {
   user-select: none;
 }
 input, select, textarea, button { font: inherit; color: inherit; }
-input[type=text], input[type=number], select, textarea {
+input[type=text], input[type=number], input[type=search], select, textarea {
   background: var(--panel2); border: 1px solid var(--line); border-radius: 7px;
   padding: 6px 9px; outline: none; user-select: text;
 }
-input[type=text]:focus, input[type=number]:focus, select:focus { border-color: var(--accent); }
+input[type=text]:focus, input[type=number]:focus, input[type=search]:focus, select:focus { border-color: var(--accent); }
 input[type=number] { width: 90px; }
 input[type=color] { width: 38px; height: 30px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel2); padding: 2px; cursor: pointer; }
 input[type=range] { accent-color: var(--accent); width: 100%; }
@@ -159,11 +159,26 @@ tr.sel td { background: #1f2a22; }
 tr.off td { opacity: .5; }
 
 /* macros */
-.mlayout { display: grid; grid-template-columns: 230px 1fr; gap: 16px; align-items: start; }
+.mlayout { display: grid; grid-template-columns: 250px 1fr; gap: 16px; align-items: start; }
 .mlist { display: flex; flex-direction: column; gap: 4px; }
 .mlist .it { padding: 8px 10px; border-radius: 8px; background: var(--panel2); cursor: pointer; border: 1px solid transparent; }
 .mlist .it.on { border-color: var(--accent); }
 .mlist .it small { display: block; color: var(--muted); }
+.mlist .it.drop, .mlist .mgrp.drop { border-color: var(--accent); border-style: dashed; }
+.msearch { width: 100%; margin-bottom: 8px; }
+.mgrp { display: flex; align-items: center; gap: 6px; padding: 6px 8px; margin-top: 4px; border-radius: 8px; cursor: pointer; user-select: none; border: 1px solid transparent; color: var(--muted); font-size: 13px; font-weight: 600; }
+.mgrp:hover { background: var(--panel2); color: var(--text); }
+.mgrp .caret { width: 12px; flex: none; }
+.mgrp .gname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mgrp .cnt { font-weight: 400; font-size: 12px; padding: 0 7px; border-radius: 9px; background: #2b3036; }
+.mgrp .gact { display: none; gap: 2px; }
+.mgrp .gact button { padding: 1px 6px; }
+.mgrp:hover .gact, .mgrp:focus-within .gact { display: flex; }
+.mgrp:has(.gact):hover .cnt, .mgrp:has(.gact):focus-within .cnt { display: none; }
+.mgrp.loose { cursor: default; }
+.gitems { display: flex; flex-direction: column; gap: 4px; padding-left: 12px; border-left: 1px solid var(--line); margin-left: 13px; }
+.gempty { padding: 4px 8px; }
+.mpick .mlist { max-height: 360px; overflow: auto; }
 .evtable { max-height: 420px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
 .evtable td input[type=number] { width: 80px; padding: 3px 6px; }
 .evtable tr:hover td { background: #1d2024; }

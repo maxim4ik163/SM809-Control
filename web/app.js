@@ -581,6 +581,128 @@ function fireEditor(body, b, cat) {
 }
 
 const execName = t => ({ 1: L('пока кнопка зажата', 'while held'), 2: L('заданное число раз', 'N times'), 3: L('до повторного нажатия', 'until pressed again') }[t]);
+// ---------------------------------------------------------------------------
+// Macro list with folders (Macros tab and the macro pickers)
+
+const macroSub = m => `${m.events.length} ${L('действий', 'actions')} · ${execName(m.executeType)}${m.executeType === 2 ? ' (' + m.repeatCount + ')' : ''}`;
+const closedGroups = () => new Set(store.get('mClosed', []));
+function setGroupClosed(g, closed) {
+  const c = closedGroups();
+  if (closed) c.add(g); else c.delete(g);
+  store.set('mClosed', [...c]);
+}
+const sameGroup = (a, b) => (a || '').toLowerCase() === (b || '').toLowerCase();
+// Folder names in display order, plus folders that only a draft uses.
+function groupNames(extra) {
+  const gs = [...(S.data.macroGroups || [])];
+  if (extra && !gs.some(g => sameGroup(g, extra))) gs.push(extra);
+  return gs;
+}
+const listQuery = {}; // search text per list ('tab', 'pick')
+
+// mountMacroList renders macros grouped by folder into box.
+// o: {key, cur, onPick(id), sub(m), manage, draft} — manage adds folder actions and drag-and-drop.
+function mountMacroList(box, o) {
+  const ms = S.data.macros || [];
+  const search = ms.length >= 8;
+  box.innerHTML = `${search ? `<input type="search" class="msearch" placeholder="${L('Поиск макроса…', 'Search macros…')}" value="${esc(listQuery[o.key] || '')}">` : ''}<div class="mlist"></div>`;
+  const list = box.querySelector('.mlist');
+  const draw = () => {
+    const q = (listQuery[o.key] || '').trim().toLowerCase();
+    const items = ms.map(m => ({ m, id: m.id, name: m.name, group: m.group || '', sub: o.sub(m) }));
+    if (o.draft) items.push({ id: 'new', name: o.draft.name, group: o.draft.group || '', sub: L('не сохранён', 'not saved'), draft: true });
+    const groups = groupNames(o.draft && o.draft.group);
+    const closed = closedGroups();
+    const curItem = items.find(it => it.id === o.cur);
+    const item = it => `<div class="it ${it.id === o.cur ? 'on' : ''}" ${it.draft ? '' : `data-m="${esc(it.id)}"`} ${o.manage ? `draggable="true" data-drag="${esc(it.id)}"` : ''} data-in="${esc(it.group)}">${esc(it.name)}<small>${esc(it.sub)}</small></div>`;
+    const hit = it => !q || it.name.toLowerCase().includes(q);
+    let html = '';
+    for (const g of groups) {
+      const all = items.filter(it => sameGroup(it.group, g));
+      const shown = q && g.toLowerCase().includes(q) ? all : all.filter(hit);
+      if (q && !shown.length) continue;
+      const open = q || !closed.has(g) || (curItem && sameGroup(curItem.group, g));
+      html += `<div class="mgrp ${open ? 'open' : ''}" data-g="${esc(g)}" data-in="${esc(g)}"><span class="caret">${open ? '▾' : '▸'}</span><span class="gname">${esc(g)}</span><span class="cnt">${all.length}</span>${o.manage ? `<span class="gact">
+        <button class="small" data-ga="new" title="${L('Новый макрос в этой папке', 'New macro in this folder')}">+</button><button class="small" data-ga="rename" title="${L('Переименовать', 'Rename')}">✎</button><button class="small" data-ga="up" title="${L('Выше', 'Move up')}">↑</button><button class="small" data-ga="down" title="${L('Ниже', 'Move down')}">↓</button><button class="small danger" data-ga="delete" title="${L('Удалить папку (макросы останутся)', 'Delete the folder (macros are kept)')}">✕</button></span>` : ''}</div>`;
+      if (open) html += `<div class="gitems">${shown.map(item).join('') || `<div class="gempty muted small">${L('Пусто', 'Empty')}${o.manage ? L(' — перетащите сюда макрос', ' — drag a macro here') : ''}</div>`}</div>`;
+    }
+    const loose = items.filter(it => !it.group).filter(hit);
+    if (groups.length && (loose.length || (o.manage && !q))) html += `<div class="mgrp open loose" data-in=""><span class="caret"></span><span class="gname">${L('Без папки', 'No folder')}</span><span class="cnt">${items.filter(it => !it.group).length}</span></div>`;
+    html += loose.map(item).join('');
+    if (q && !html) html = `<div class="muted small" style="padding:8px">${L('Ничего не найдено', 'Nothing found')}</div>`;
+    list.innerHTML = html;
+
+    list.querySelectorAll('[data-m]').forEach(el => el.onclick = () => o.onPick(el.dataset.m));
+    list.querySelectorAll('.mgrp[data-g]').forEach(el => el.onclick = e => {
+      if (e.target.closest('button') || q) return;
+      setGroupClosed(el.dataset.g, el.classList.contains('open')); draw();
+    });
+    if (!o.manage) return;
+    list.querySelectorAll('[data-ga]').forEach(el => el.onclick = () => groupAction(el.dataset.ga, el.closest('.mgrp').dataset.g));
+    // drag a macro onto a folder header, the "no folder" header or a macro of the target folder
+    list.querySelectorAll('[data-drag]').forEach(el => el.ondragstart = e => { e.dataTransfer.setData('text/x-macro', el.dataset.drag); e.dataTransfer.effectAllowed = 'move'; });
+    list.querySelectorAll('[data-in]').forEach(el => {
+      el.ondragover = e => { if (e.dataTransfer.types.includes('text/x-macro')) { e.preventDefault(); el.classList.add('drop'); } };
+      el.ondragleave = () => el.classList.remove('drop');
+      el.ondrop = e => { e.preventDefault(); el.classList.remove('drop'); moveMacro(e.dataTransfer.getData('text/x-macro'), el.dataset.in); };
+    });
+  };
+  const inp = box.querySelector('.msearch');
+  if (inp) inp.oninput = () => { listQuery[o.key] = inp.value; draw(); };
+  draw();
+}
+
+async function moveMacro(id, group) {
+  if (!id) return;
+  if (id === 'new') { if (mDraft) { mDraft.group = group; renderView(); } return; }
+  const m = macroById(id);
+  if (!m || sameGroup(m.group, group)) return;
+  if (!await run(() => api('macro/move', { id, group }))) return;
+  if (group) setGroupClosed(group, false);
+  if (mDraft && mEditId === id) mDraft.group = group; // the move is saved already; keep the draft in step
+  await reload();
+}
+
+async function groupAction(op, g) {
+  if (op === 'new') {
+    if (mDirty && !await discardChanges('macro')) return;
+    stopRec(); mEditId = 'new'; mDraft = { ...newMacro(), group: g }; mDirty = true; mSel = -1; setGroupClosed(g, false); renderView();
+    return;
+  }
+  if (op === 'rename') {
+    const to = await promptBox(L('Переименовать папку', 'Rename folder'), g, L('Переименовать', 'Rename'));
+    if (!to || to === g) return;
+    const r = await run(() => api('macro/group', { op, name: g, to }));
+    if (!r) return;
+    const wasClosed = closedGroups().has(g);
+    setGroupClosed(g, false); setGroupClosed(r.name, wasClosed);
+    if (mDraft && sameGroup(mDraft.group, g)) mDraft.group = r.name;
+    await reload();
+    return;
+  }
+  if (op === 'delete') {
+    const n = (S.data.macros || []).filter(m => sameGroup(m.group, g)).length;
+    if (n && !await confirmBox(L('Удалить папку', 'Delete folder'), L(`Удалить папку ${esc(Q(g))}? Макросы из неё (${n}) не удаляются — они окажутся «Без папки».`,
+      `Delete the folder ${esc(Q(g))}? Its macros (${n}) are not deleted — they move to “No folder”.`), L('Удалить папку', 'Delete folder'), true)) return;
+    if (!await run(() => api('macro/group', { op, name: g }))) return;
+    setGroupClosed(g, false);
+    if (mDraft && sameGroup(mDraft.group, g)) mDraft.group = '';
+    await reload();
+    return;
+  }
+  if (await run(() => api('macro/group', { op, name: g }))) await reload(); // up, down
+}
+
+async function newGroup() {
+  const name = await promptBox(L('Новая папка', 'New folder'), '', L('Создать', 'Create'));
+  if (!name) return null;
+  const r = await run(() => api('macro/group', { op: 'add', name }));
+  if (!r) return null;
+  setGroupClosed(r.name, false);
+  await reload();
+  return r.name;
+}
+
 function macroAssign(body, b) {
   const ms = S.data.macros || [];
   if (!ms.length) {
@@ -588,11 +710,11 @@ function macroAssign(body, b) {
     body.querySelector('#mgo').onclick = () => { tab = 'macros'; store.set('tab', tab); mEditId = 'new'; mDraft = newMacro(); mDirty = true; renderAll(); };
     return;
   }
-  body.innerHTML = `<div class="mlist">${ms.map(m => `<div class="it ${b.kind === 'macro' && b.macroId === m.id ? 'on' : ''}" data-m="${m.id}">${esc(m.name)}<small>${m.events.length} ${L('действий', 'actions')} · ${execName(m.executeType)}${m.executeType === 2 ? ' (' + m.repeatCount + ')' : ''}</small></div>`).join('')}</div>
+  body.innerHTML = `<div class="mpick"></div>
     <p class="muted small">${L('Режим повтора задаётся в самом макросе (вкладка «Макросы»).', 'The repeat mode is set in the macro itself (Macros tab).')}</p>`;
-  body.querySelectorAll('[data-m]').forEach(el => el.onclick = () => {
-    const m = macroById(el.dataset.m);
-    setButton(selBtn, { kind: 'macro', code: [144, 0, 0], label: m.name, macroId: m.id });
+  mountMacroList(body.querySelector('.mpick'), {
+    key: 'pick', cur: b.kind === 'macro' ? b.macroId : '', sub: macroSub,
+    onPick: id => { const m = macroById(id); setButton(selBtn, { kind: 'macro', code: [144, 0, 0], label: m.name, macroId: m.id }); },
   });
 }
 
@@ -725,16 +847,20 @@ function stopRec() {
 function viewMacros(v) {
   const ms = S.data.macros || [];
   if (!mDraft && mEditId && mEditId !== 'new') mDraft = clone(macroById(mEditId));
-  let list = ms.map(m => `<div class="it ${m.id === mEditId ? 'on' : ''}" data-m="${m.id}">${esc(m.name)}<small>${m.events.length} ${L('действий', 'actions')}</small></div>`).join('');
-  if (mEditId === 'new') list += `<div class="it on">${esc(mDraft ? mDraft.name : '')}<small>${L('не сохранён', 'not saved')}</small></div>`;
-  v.innerHTML = `<div class="mlayout"><div><div class="mlist">${list}</div><div class="row" style="margin-top:10px"><button class="primary" id="mnew">+ ${L('Новый макрос', 'New macro')}</button></div>
+  v.innerHTML = `<div class="mlayout"><div><div id="mlistbox"></div><div class="row" style="margin-top:10px"><button class="primary" id="mnew">+ ${L('Новый макрос', 'New macro')}</button><button id="mgnew">+ ${L('Папка', 'Folder')}</button></div>
+    ${(S.data.macroGroups || []).length ? `<p class="muted small">${L('Макрос можно перетащить в другую папку. Папки нужны только для порядка в списке — в мышь они не записываются.', 'Drag a macro to move it to another folder. Folders only organise this list — they are not written to the mouse.')}</p>` : ''}
     <p class="muted small">${L(`Макрос записывается в мышь вместе с профилем, в котором он назначен на кнопку. Память мыши — ${MAX_BYTES / 3} действий на все макросы профиля.`,
       `A macro is written to the mouse together with the profile that assigns it to a button. Mouse memory: ${MAX_BYTES / 3} actions for all macros of a profile.`)}</p></div>
     <div id="med"></div></div>`;
-  v.querySelectorAll('[data-m]').forEach(el => el.onclick = async () => {
-    if (mDirty && !await discardChanges('macro')) return;
-    stopRec(); mEditId = el.dataset.m; mDraft = clone(macroById(mEditId)); mDirty = false; mSel = -1; renderView();
+  mountMacroList(v.querySelector('#mlistbox'), {
+    key: 'tab', cur: mEditId, manage: true, draft: mEditId === 'new' ? mDraft : null, sub: m => `${m.events.length} ${L('действий', 'actions')}`,
+    onPick: async id => {
+      if (id === mEditId) return;
+      if (mDirty && !await discardChanges('macro')) return;
+      stopRec(); mEditId = id; mDraft = clone(macroById(mEditId)); mDirty = false; mSel = -1; renderView();
+    },
   });
+  v.querySelector('#mgnew').onclick = () => newGroup();
   v.querySelector('#mnew').onclick = async () => {
     if (mDirty && !await discardChanges('macro')) return;
     stopRec(); mEditId = 'new'; mDraft = newMacro(); mDirty = true; mSel = -1; renderView();
@@ -758,7 +884,8 @@ function renderMacroEditor(ed) {
   });
   const exLabel = { 1: L('Повторять, пока кнопка зажата', 'Repeat while the button is held'), 2: L('Выполнить N раз', 'Run N times'), 3: L('Повторять до повторного нажатия', 'Repeat until the button is pressed again') };
   ed.innerHTML = `<div class="card">
-    <div class="row"><label class="field" style="flex:1"><span>${L('Название', 'Name')}</span><input type="text" id="mname" value="${esc(m.name)}"></label></div>
+    <div class="row"><label class="field" style="flex:1"><span>${L('Название', 'Name')}</span><input type="text" id="mname" value="${esc(m.name)}"></label>
+      <label class="field"><span>${L('Папка', 'Folder')}</span><select id="mgroup"><option value="">${L('— без папки —', '— no folder —')}</option>${groupNames(m.group).map(g => `<option value="${esc(g)}" ${sameGroup(g, m.group) ? 'selected' : ''}>${esc(g)}</option>`).join('')}<option value="" id="mgnewopt">${L('Новая папка…', 'New folder…')}</option></select></label></div>
     <h3>${L('Как выполнять', 'Run mode')}</h3>
     <div class="row">${[1, 3].map(t => `<label class="check"><input type="radio" name="ex" data-ex="${t}" ${m.executeType === t ? 'checked' : ''}>${exLabel[t]}</label>`).join('')}
       <span class="nowrap"><label class="check"><input type="radio" name="ex" data-ex="2" ${m.executeType === 2 ? 'checked' : ''}>${exLabel[2]}</label>
@@ -792,6 +919,15 @@ function renderMacroEditor(ed) {
 
   const mark = () => { mDirty = true; };
   ed.querySelector('#mname').oninput = e => { m.name = e.target.value; mark(); ed.querySelector('#msave').disabled = false; };
+  ed.querySelector('#mgroup').onchange = async e => {
+    let g = e.target.value;
+    if (e.target.selectedOptions[0].id === 'mgnewopt') {
+      g = await promptBox(L('Новая папка', 'New folder'), '', L('Создать', 'Create'));
+      if (!g) { e.target.value = m.group || ''; return; }
+    }
+    if (mEditId !== 'new' && !mDirty) { await moveMacro(mEditId, g); return; } // a saved macro moves at once
+    m.group = g; mark(); setGroupClosed(g, false); renderView();
+  };
   ed.querySelectorAll('[data-ex]').forEach(el => el.onchange = () => { m.executeType = +el.dataset.ex; mark(); renderMacroEditor(ed); });
   const rep = ed.querySelector('#mrep');
   rep.onchange = () => { m.repeatCount = Math.max(1, Math.min(255, +rep.value | 0)); rep.value = m.repeatCount; mark(); ed.querySelector('#msave').disabled = false; };
@@ -888,6 +1024,7 @@ function renderMacroEditor(ed) {
     const r = await run(() => api('macro/save', { ...m, events: m.events.map((e, i) => ({ ...e, index: i })) }));
     if (!r) return;
     mEditId = r.id; mDirty = false; mDraft = null;
+    if (m.group) setGroupClosed(m.group, false);
     toast(L('Макрос сохранён', 'Macro saved') + (usedInCurrent(r.id) ? L('. Он назначен в текущем профиле — запишите профиль в мышь.', '. It is assigned in the current profile — write the profile to the mouse.') : ''));
     await reload();
   };
@@ -1267,7 +1404,7 @@ function viewSettings(v) {
     const d = await run(() => api('export'));
     if (!d) return;
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify({ profiles: d.profiles, macros: d.macros }, null, 2)], { type: 'application/json' }));
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({ profiles: d.profiles, macros: d.macros, macroGroups: d.macroGroups || [] }, null, 2)], { type: 'application/json' }));
     a.download = 'sm809-profiles.json';
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
@@ -1278,7 +1415,7 @@ function viewSettings(v) {
     const file = f.files[0]; if (!file) return;
     let d;
     try { d = JSON.parse(await file.text()); } catch { toast(L('Это не JSON-файл', 'This is not a JSON file'), true); return; }
-    const r = await run(() => api('import', { profiles: d.profiles || [], macros: d.macros || [] }));
+    const r = await run(() => api('import', { profiles: d.profiles || [], macros: d.macros || [], macroGroups: d.macroGroups || [] }));
     if (r) { toast(L(`Импортировано профилей: ${r.profiles}, макросов: ${r.macros}`, `Imported profiles: ${r.profiles}, macros: ${r.macros}`)); await reload(); }
     f.value = '';
   };
@@ -1546,10 +1683,10 @@ function softMacroEditor(body, b, set) {
     body.querySelector('#smgo').onclick = go;
     return;
   }
-  body.innerHTML = `<div class="mlist">${ms.map(m => `<div class="it ${b.macroId === m.id ? 'on' : ''}" data-m="${m.id}">${esc(m.name)}<small>${m.events.length} ${L('действий', 'actions')} · ${execName(m.executeType)}${m.executeType === 2 ? ' (' + m.repeatCount + ')' : ''}</small></div>`).join('')}</div>
+  body.innerHTML = `<div class="mpick"></div>
     <p class="muted small">${L('Макрос проигрывает программа — те же макросы, что на вкладке «Макросы», и тот же режим повтора. Сдвиги курсора здесь выполняются. «До повторного нажатия» останавливается повторным нажатием этой же кнопки.',
       'The app plays the macro — the same macros as on the Macros tab, with the same repeat mode. Cursor moves are performed here. “Until pressed again” stops when the same button is pressed again.')}</p>`;
-  body.querySelectorAll('[data-m]').forEach(el => el.onclick = () => set({ ...b, macroId: el.dataset.m }));
+  mountMacroList(body.querySelector('.mpick'), { key: 'pick', cur: b.macroId, sub: macroSub, onPick: id => set({ ...b, macroId: id }) });
 }
 
 // Text fields update the draft directly (no re-render while typing).
