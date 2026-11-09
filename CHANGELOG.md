@@ -27,6 +27,8 @@ This release is for mice flashed with the **zones firmware** — a modified vers
 
 The firmware itself is not distributed here. The patcher takes the vendor updater `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` (it checks the exact file) and creates `SM809_Mouse_IAP_zones.exe` next to it — the same updater with the zones firmware, English interface, no "already up to date" refusal and a 30 s wait for the mouse to reconnect after flashing. Drag the vendor updater onto the patcher.
 
+Where to get the vendor updater: [solakaka.com/pages/driver-download](https://solakaka.com/pages/driver-download) → mouse **SM809 Pro** → **[Download Firmware Upgrade]**. It downloads `SM809PRO_Firmware_Upgrade.rar`; the updater `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` is inside.
+
 **Flashing — read before you start**
 
 - Close SM809 Control, the vendor software and the web driver; connect the mouse with the cable.
@@ -57,6 +59,8 @@ Firmware details: [docs/PROTOCOL.md](docs/PROTOCOL.md#lighting-hardware-and-the-
 **`SM809_IAP_zones_patcher.exe`**
 
 Саму прошивку мы не распространяем. Патчер берёт фирменный прошивальщик `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` (проверяет, что это именно он) и создаёт рядом `SM809_Mouse_IAP_zones.exe` — тот же прошивальщик с прошивкой «зоны», английским интерфейсом, без отказа «прошивка уже актуальна» и с ожиданием переподключения мыши 30 с. Перетащите фирменный прошивальщик на патчер.
+
+Где взять фирменный прошивальщик: [solakaka.com/pages/driver-download](https://solakaka.com/pages/driver-download) → мышь **SM809 Pro** → кнопка **[Download Firmware Upgrade]**. Скачается архив `SM809PRO_Firmware_Upgrade.rar`, прошивальщик `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` лежит в нём.
 
 **Прошивка — прочитайте до начала**
 

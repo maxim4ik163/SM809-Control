@@ -8,6 +8,8 @@
 - **forced update** (also when the mouse already reports this firmware);
 - **30 s** wait for the mouse to reconnect after the update.
 
+**Where to get the vendor updater:** [solakaka.com/pages/driver-download](https://solakaka.com/pages/driver-download) → mouse **SM809 Pro** → **[Download Firmware Upgrade]**. It downloads `SM809PRO_Firmware_Upgrade.rar`; `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` is inside.
+
 The repository holds only our changes (`patch_data.go`, ~6 KB); the vendor updater is the input and is checked by its SHA-256, the result too.
 
 **Use:** drag the vendor updater onto the patcher (or put both in one folder and run the patcher). `SM809_Mouse_IAP_zones.exe` appears next to it. Close SM809 Control, the vendor software and the web driver, connect the mouse with the cable and flash.
@@ -20,6 +22,6 @@ To go back, flash with the original updater. Firmware details: [docs/PROTOCOL.md
 
 ---
 
-**По-русски.** `SM809_IAP_zones_patcher.exe` делает из фирменного прошивальщика `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` файл `SM809_Mouse_IAP_zones.exe`: прошивка с зонами подсветки и фиксом боковой подсветки, английский интерфейс, прошивка без проверки версии, ожидание переподключения 30 с. Перетащите фирменный прошивальщик на патчер. Перед прошивкой закройте SM809 Control, фирменную программу и веб-драйвер. После прошивки настройки и привязка к донглу стираются: выньте и вставьте донгл, затем прочитайте настройки из мыши в SM809 Control и запишите профиль. Вернуть заводскую прошивку — прошить оригинальным прошивальщиком.
+**По-русски.** `SM809_IAP_zones_patcher.exe` делает из фирменного прошивальщика `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` файл `SM809_Mouse_IAP_zones.exe`: прошивка с зонами подсветки и фиксом боковой подсветки, английский интерфейс, прошивка без проверки версии, ожидание переподключения 30 с. Фирменный прошивальщик: [solakaka.com/pages/driver-download](https://solakaka.com/pages/driver-download) → мышь SM809 Pro → кнопка [Download Firmware Upgrade], архив `SM809PRO_Firmware_Upgrade.rar`. Перетащите фирменный прошивальщик на патчер. Перед прошивкой закройте SM809 Control, фирменную программу и веб-драйвер. После прошивки настройки и привязка к донглу стираются: выньте и вставьте донгл, затем прочитайте настройки из мыши в SM809 Control и запишите профиль. Вернуть заводскую прошивку — прошить оригинальным прошивальщиком.
 
 **Developers.** `fw/zones.s` is the patch code, `fw/build_fw.py ORIGINAL.exe UIBASE.exe OUT.exe` extracts the stock firmware from the vendor updater, applies the d64 fix and the zones hooks, rebuilds the container (CRC-16 per 32-byte block, CS1) and puts it into an updater that already has our UI patches (e.g. the patcher's output). Then `python3 mkpatch.py ORIGINAL.exe OUT.exe > patch_data.go`. Rebuilding with the current sources reproduces `SM809_Mouse_IAP_zones.exe` byte for byte.
