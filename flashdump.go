@@ -27,12 +27,11 @@ import (
 	"unsafe"
 )
 
-// First bytes of the code the zones firmware patch adds (see docs/PROTOCOL.md):
-// at 0x41C00 (SM809_Mouse_IAP_zones, the build in use) or at 0x356D4 (test
-// build zones2).
+// First bytes of the code the zones firmware patch adds at 0x41C00
+// (SM809_Mouse_IAP_zones, see docs/PROTOCOL.md).
 var zonesFWCode = []byte{0x0c, 0x48, 0xc1, 0x7e, 0x00, 0x7f, 0xc9, 0x07, 0x00, 0xd0, 0x00, 0x20, 0x70, 0x47, 0x09, 0x4b}
 
-var zonesFWAddrs = []uint32{0x41C00, 0x356D4}
+const zonesFWAddr = 0x41C00
 
 const (
 	iapReportID  = 0xBF
@@ -238,11 +237,8 @@ func readMouseMemory() (*MouseMemory, error) {
 	mem := &MouseMemory{Config: cfg, Macros: map[int][]byte{}}
 	// is the lighting-zones firmware patch installed? (best effort: its code
 	// sits at a fixed address of the program flash; any failure = no)
-	for _, a := range zonesFWAddrs {
-		if b, err := c.read(a, len(zonesFWCode)); err == nil && bytes.Equal(b, zonesFWCode) {
-			mem.ZonesFW = true
-			break
-		}
+	if b, err := c.read(zonesFWAddr, len(zonesFWCode)); err == nil && bytes.Equal(b, zonesFWCode) {
+		mem.ZonesFW = true
 	}
 	for k, idx := range dualPacketOrder {
 		if cfg[cfgKeys+3*k] != 144 {
