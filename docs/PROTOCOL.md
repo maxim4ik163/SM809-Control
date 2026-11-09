@@ -133,11 +133,13 @@ What the stock firmware drives:
   - `[9..11]` connection / charging status.
   Lighting mode 0, "off while moving" and sleep blank all of them.
 
-No command switches zones individually. The **zones patch** (`SM809_Mouse_IAP_zones`, built on top of the d64 LED-command fix) adds 56 bytes of code at `0x41C00` (free space at the end of the image) and two `bl` hooks:
+No command switches zones individually. The **zones patch** (`SM809_Mouse_IAP_zones`, built on top of the d64 LED-command fix) adds 56 bytes of code at `0x356D4`, in place of the SDK demo `pwm_mode_timer_demo` that nothing calls (its entry `0x356D2` becomes `bx lr`), and two `bl` hooks:
 
 | Hook | Replaces | Does |
 |---|---|---|
 | `0x2DC74` | `ldr r0,=0x4015F8; ldrb r0,[r0,#0x1C]` (mode for the side controller) | returns 0 when `config[0x7B]` bit 0 is set → side controller off, other zones untouched |
 | `0x2D4D2` | `ldr r0,[sp,#0xC]; cmp r0,#1` (after the wheel/logo colours are computed) | bit 1 → zero `[3..5]` (wheel off; the critical-battery blink in `[6..8]` stays); bit 2 → `[0..2]` = DPI colour slot 8 (`config[0x6F..0x71]`, static colour, black = logo off) |
 
-`config[0x7B]` is 0 in the factory defaults, so the patched firmware looks exactly like the stock one until the byte is written. With the stock firmware the byte and colour slot 8 have no effect. The app detects the patch by reading `0x41C00` over the cable (0xBF report).
+`config[0x7B]` is 0 in the factory defaults, so the patched firmware looks exactly like the stock one until the byte is written. With the stock firmware the byte and colour slot 8 have no effect. The app detects the patch by reading its code over the cable (0xBF report).
+
+The first build (zones1) put the code at `0x41C00`, into the erased blocks at the end of the image. Flashing it wiped the settings sector: the mouse came up with factory settings and **without the dongle pairing**, whose 5-byte RF address is stored in `config[0x00..0x04]` (written by the pairing code together with the RAM copy, read at boot). The earlier LED-fix builds, which leave the end of the image erased, did not do that, so the updater/bootloader probably treats the image end specially; zones2 keeps the end of the image byte-identical to the d64 build (being verified).
