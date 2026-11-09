@@ -249,6 +249,7 @@ type MacroEvent struct {
 type Macro struct {
 	ID          string       `json:"id"`
 	Name        string       `json:"name"`
+	Group       string       `json:"group,omitempty"` // folder in the app's macro list ("" = none); not sent to the mouse
 	ExecuteType int          `json:"executeType"` // 1 while held, 2 N times, 3 until any key
 	RepeatCount int          `json:"repeatCount"`
 	Events      []MacroEvent `json:"events"`

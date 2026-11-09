@@ -138,6 +138,8 @@ type Data struct {
 	Version  int        `json:"version"`
 	Profiles []*Profile `json:"profiles"`
 	Macros   []*Macro   `json:"macros"`
+	// MacroGroups: macro folders in display order, including empty ones.
+	MacroGroups []string `json:"macroGroups"`
 	Rules    []Rule     `json:"rules"`
 	Settings Settings   `json:"settings"`
 	Soft     *SoftData  `json:"soft,omitempty"` // 1.5 betas, migrated into profiles
@@ -358,6 +360,7 @@ func (s *Store) fixup() {
 			d.Settings.HWButtons[i] = true
 		}
 	}
+	syncMacroGroups(d)
 	d.Version = dataVersion
 	d.Settings.HWButtons[lockedSlot] = true
 	d.Soft = nil

@@ -2,7 +2,7 @@
 
 Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/releases).
 
-## 2.2.0 — 2026-11-09
+## 2.3.0 — 2026-11-09
 
 **English**
 
@@ -17,6 +17,22 @@ Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/re
 - Пропатченная прошивка определяется автоматически при чтении настроек из мыши по кабелю; её можно отметить и вручную в «Настройки → Экспериментальные опции». С заводской прошивкой эти настройки ни на что не влияют.
 - **`SM809_IAP_zones_patcher.exe`** (в релизе) делает из фирменного прошивальщика `SM809_Mouse_Wired_USB_IAP25-08-11-1.exe` файл `SM809_Mouse_IAP_zones.exe`: прошивка с зонами и фиксом боковой подсветки, английский интерфейс, прошивка без проверки версии, ожидание переподключения 30 с. Прошивка (любым прошивальщиком) стирает настройки мыши и привязку к донглу: переподключите донгл и прочитайте настройки из мыши.
 - docs/PROTOCOL.md: как управляются три зоны подсветки (контроллер боковых кнопок по UART, мультиплексированные RGB-светодиоды на ШИМ для колеса и логотипа) и что меняет патч.
+
+## 2.2.0 — 2026-11-09
+
+**English**
+
+- **Macro folders.** On the Macros tab macros can be sorted into folders: *+ Folder* creates one; a folder header collapses and expands it and, on hover, offers a new macro inside it, rename, move up/down and delete. Drag a macro onto a folder (or onto *No folder*) to move it, or pick the folder in the macro editor. Deleting a folder keeps its macros — they move to *No folder*; renaming a folder onto an existing one merges them. Collapsed folders are remembered.
+- **Search** above the macro list once there are 8 or more macros (matches macro and folder names).
+- The macro pickers in the button editor (hardware and software buttons) show the same folders and search; the folder of the assigned macro opens by itself.
+- Folders only organise the list in the app: nothing is written to the mouse, and existing macros start without a folder. Export/import of profiles and macros and the full backup keep the folders.
+
+**Русский**
+
+- **Папки для макросов.** На вкладке «Макросы» макросы можно раскладывать по папкам: «+ Папка» создаёт папку; заголовок папки сворачивает и разворачивает её, а при наведении даёт создать в ней макрос, переименовать, переместить выше/ниже и удалить. Макрос переносится перетаскиванием на папку (или на «Без папки») либо выбором папки в редакторе макроса. Удаление папки не удаляет макросы — они попадают в «Без папки»; переименование в имя существующей папки объединяет их. Свёрнутые папки запоминаются.
+- **Поиск** над списком, когда макросов 8 и больше (по имени макроса и папки).
+- Выбор макроса в редакторе кнопки (аппаратной и программной) показывает те же папки и поиск; папка назначенного макроса раскрывается сама.
+- Папки нужны только для порядка в программе: в мышь ничего не записывается, существующие макросы оказываются «Без папки». Экспорт/импорт профилей и макросов и полная резервная копия сохраняют папки.
 
 ## 2.1.7 — 2026-11-07
 

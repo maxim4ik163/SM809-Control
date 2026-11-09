@@ -29,7 +29,7 @@ An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gamin
 - **DPI.** 1 to 6 levels, any value per level (limits and step follow the sensor, e.g. PAW3311: 200–24000 in steps of 100), a colour per level, start level.
 - **Lighting.** All 11 modes supported by the firmware. With the zones firmware (made from the vendor updater by `SM809_IAP_zones_patcher.exe`, see [tools/iap-patch](tools/iap-patch/README.md)): side buttons and wheel switched on/off separately, a fixed logo colour of your choice or logo off.
 - **Performance.** Polling rate (the list follows the connection), lift-off distance (LOD 1/2 mm, missing in the vendor Windows app), sleep timer, wake on movement, lighting off while moving, angle snapping, Motion Sync, ripple control.
-- **Macros.** Recorder (keys and mouse buttons, real or fixed delays) and manual editor (press / release / delay, type a whole text, reorder). Firmware macros are encoded exactly like the vendor driver does, with a memory meter; software-mode macros have no such limits.
+- **Macros.** Recorder (keys and mouse buttons, real or fixed delays) and manual editor (press / release / delay, type a whole text, reorder). Firmware macros are encoded exactly like the vendor driver does, with a memory meter; software-mode macros have no such limits. Macros can be sorted into folders (collapsible, drag and drop, search) so a long list stays manageable.
 - **Profiles.** Unlimited, stored on the PC. Only the current one is written to the mouse, and **only the settings that differ**, to spare the flash memory.
 - **Per-game profiles** (opt-in). A profile is written to the mouse when an `.exe` starts and reverted when it exits. Off by default; turned on only after a warning about flash wear. Software buttons don't need it.
 - **On-screen popups** for DPI, profile and button-set changes with a customisable look.
@@ -194,7 +194,7 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md): status report, all commands, button co
 - **DPI:** 1–6 уровней с любыми значениями, цвет каждого уровня, стартовый уровень.
 - **Подсветка:** все 11 режимов прошивки. С прошивкой «зоны» (её делает из фирменного прошивальщика `SM809_IAP_zones_patcher.exe`, см. [tools/iap-patch](tools/iap-patch/README.md)): боковые кнопки и колесо включаются и выключаются отдельно, логотип — постоянный цвет на выбор или выключен.
 - **Производительность:** частота опроса, высота отрыва LOD (её нет в фирменной программе), сон, пробуждение движением, angle snapping, Motion Sync, Ripple.
-- **Макросы:** запись и ручной редактор, ввод целого текста. Макросы прошивки кодируются точно как в официальном драйвере, с индикатором памяти; у макросов программного режима этих ограничений нет.
+- **Макросы:** запись и ручной редактор, ввод целого текста. Макросы прошивки кодируются точно как в официальном драйвере, с индикатором памяти; у макросов программного режима этих ограничений нет. Макросы можно раскладывать по папкам (сворачиваются, перетаскивание, поиск), чтобы длинный список не мешал.
 - **Профили:** без ограничения количества, хранятся на компьютере. В мышь пишется только то, что отличается.
 - **Переключение по играм** (по желанию): профиль записывается в мышь при запуске exe и возвращается при выходе. По умолчанию выключено и включается только после предупреждения об износе флеш-памяти. Программным кнопкам оно не нужно.
 - **Всплывающие окна** DPI, профиля и набора кнопок с настройкой внешнего вида.

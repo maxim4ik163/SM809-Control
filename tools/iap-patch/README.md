@@ -3,7 +3,7 @@
 `SM809_IAP_zones_patcher.exe` turns the vendor updater **`SM809_Mouse_Wired_USB_IAP25-08-11-1.exe`**
 (SHA-256 `ab1f8f3c…f84088`) into **`SM809_Mouse_IAP_zones.exe`** — the same updater with:
 
-- **zones firmware**: the side-light fix (one lighting command, sent with a delay) plus switchable lighting zones — side buttons on/off, wheel on/off (the critical-battery blink stays), logo off or a fixed colour. Set them in SM809 Control 2.2+ on the *Lighting* tab;
+- **zones firmware**: the side-light fix (one lighting command, sent with a delay) plus switchable lighting zones — side buttons on/off, wheel on/off (the critical-battery blink stays), logo off or a fixed colour. Set them in SM809 Control 2.3+ on the *Lighting* tab;
 - **English** interface;
 - **forced update** (also when the mouse already reports this firmware);
 - **30 s** wait for the mouse to reconnect after the update.

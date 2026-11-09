@@ -3,6 +3,7 @@
 package main
 
 import (
+	"reflect"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -299,6 +300,36 @@ func TestAPI(t *testing.T) {
 		t.Fatal("import macro remap")
 	}
 	_ = a.stateView()
+
+	// macro folders: create, move, rename, export/import, delete keeps macros
+	if c, m := post(t, a, "macro/group", map[string]string{"op": "add", "name": " Raid "}); c != 200 || m["name"] != "Raid" {
+		t.Fatalf("group add %v", m)
+	}
+	if c, _ := post(t, a, "macro/group", map[string]string{"op": "add", "name": "raid"}); c != 400 {
+		t.Fatal("duplicate folder")
+	}
+	if c, m := post(t, a, "macro/move", map[string]string{"id": mid, "group": "raid"}); c != 200 || st.macro(mid).Group != "Raid" {
+		t.Fatalf("move %v", m)
+	}
+	if c, m := post(t, a, "macro/group", map[string]string{"op": "rename", "name": "Raid", "to": "Boss"}); c != 200 || st.macro(mid).Group != "Boss" {
+		t.Fatalf("rename %v", m)
+	}
+	if c, _ := post(t, a, "macro/group", map[string]string{"op": "add", "name": "Empty"}); c != 200 {
+		t.Fatal("add 2")
+	}
+	n := len(st.data.Macros)
+	if c, m := post(t, a, "import", map[string]any{"profiles": []*Profile{}, "macros": []*Macro{{ID: "q", Name: "imp", Group: "Imported", ExecuteType: 1}}, "macroGroups": []string{"Other", "Imported"}}); c != 200 {
+		t.Fatalf("import groups %v", m)
+	}
+	if want := []string{"Boss", "Empty", "Other", "Imported"}; !reflect.DeepEqual(st.data.MacroGroups, want) || st.data.Macros[n].Group != "Imported" {
+		t.Fatalf("import groups %q", st.data.MacroGroups)
+	}
+	if c, _ := post(t, a, "macro/group", map[string]string{"op": "delete", "name": "boss"}); c != 200 || st.macro(mid) == nil || st.macro(mid).Group != "" {
+		t.Fatal("delete folder")
+	}
+	if c, _ := post(t, a, "macro/group", map[string]string{"op": "nope", "name": "Empty"}); c != 400 {
+		t.Fatal("unknown op")
+	}
 
 	// full backup → restore on a "new PC"
 	st.state.FlashWrites = 1234

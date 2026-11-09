@@ -585,7 +585,49 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 			}
 			st.data.Macros = append(st.data.Macros, &m)
 		}
+		syncMacroGroups(st.data)
 		return map[string]string{"id": m.ID}, st.saveData()
+
+	case "macro/move": // put a macro into a folder ("" = none)
+		var req struct{ ID, Group string }
+		if err := dec(&req); err != nil {
+			return nil, err
+		}
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if err := moveMacroTo(st.data, req.ID, req.Group); err != nil {
+			return nil, err
+		}
+		return map[string]string{"group": st.macro(req.ID).Group}, st.saveData()
+
+	case "macro/group": // folders: add, rename, delete (macros are kept), up, down
+		var req struct{ Op, Name, To string }
+		if err := dec(&req); err != nil {
+			return nil, err
+		}
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		name, err := req.Name, error(nil)
+		switch req.Op {
+		case "add":
+			name, err = addMacroGroup(st.data, req.Name)
+		case "rename":
+			name, err = renameMacroGroup(st.data, req.Name, req.To)
+		case "delete":
+			err = deleteMacroGroup(st.data, req.Name)
+		case "up", "down":
+			dir := 1
+			if req.Op == "up" {
+				dir = -1
+			}
+			err = shiftMacroGroup(st.data, req.Name, dir)
+		default:
+			err = errors.New(T("неизвестная операция", "unknown operation"))
+		}
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"name": name}, st.saveData()
 
 	case "macro/delete":
 		var req struct{ ID string }
@@ -838,6 +880,7 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 			p.Soft = mp.Soft
 		}
 		st.data.Macros = append(st.data.Macros, cp.Macros...)
+		syncMacroGroups(st.data)
 		st.data.Profiles = append(st.data.Profiles, p)
 		st.data.Settings.BaseProfile = p.ID // it is what the mouse holds now
 		err := st.saveData()
@@ -913,6 +956,9 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 			}
 			st.data.Profiles = append(st.data.Profiles, &n)
 		}
+		// folders of the imported macros (an export also carries the folder order)
+		st.data.MacroGroups = append(st.data.MacroGroups, d.MacroGroups...)
+		syncMacroGroups(st.data)
 		return map[string]int{"profiles": len(d.Profiles), "macros": len(d.Macros)}, st.saveData()
 	}
 	return nil, fmt.Errorf(T("неизвестный запрос %s", "unknown request %s"), path)

@@ -15,7 +15,7 @@ import (
 	"unsafe"
 )
 
-const appVersion = "2.2.0"
+const appVersion = "2.3.0"
 
 const projectURL = "https://github.com/maxim4ik163/SM809-Control"
 
