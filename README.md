@@ -78,7 +78,7 @@ After using the vendor software, use **Settings → Mouse → Read settings from
 Get `SM809Control_vX.Y.Z.exe` from [Releases](../../releases). It is a single file; no installation. The release also has `SM809_IAP_zones_patcher.exe`, which makes the zones firmware from the vendor updater — only needed for the lighting zones, see [tools/iap-patch](tools/iap-patch/README.md).
 
 - Windows 10/11. The UI uses the WebView2 runtime that ships with Windows; without it the UI opens in the default browser.
-- The app lives in the tray. Left click opens the window, right click opens the menu.
+- The app lives in the tray. Left click opens the window, right click opens the menu. The battery icon follows the taskbar theme: a dark outline on a light taskbar, a white one on a dark taskbar.
 - The window is a separate short-lived process. When you close it, only a small background part (≈10–15 MB) keeps running for the tray, popups and software buttons.
 - Do not run the vendor software or web driver at the same time.
 
@@ -89,6 +89,8 @@ Get `SM809Control_vX.Y.Z.exe` from [Releases](../../releases). It is a single fi
 **Notes on software mode.**
 - Software buttons do nothing while SM809 Control is not running. Turn on *Settings → Buttons and profiles → Restore the hardware layout when the app exits* if you want the mouse to work normally after closing the app (this costs one write per exit and start).
 - With a Japanese input method active, the International keys of buttons 14–16 may be seen by the IME before the app; mark those buttons as hardware if that bothers you.
+- The carrier keys are F13–F24 and International 1/4/5. SM809 Control keeps its keyboard hook first in the chain, but in rare cases a program that reads these keys itself may still see a mouse button as one of them, and a keyboard that has F13–F24 keys triggers the software mouse buttons.
+- Shift, Ctrl and Alt held on the keyboard add up with the button: if a button sends F14, Shift + button arrives as Shift+F14. Use it as one more combination on the same button in another program.
 - Programs running as administrator (some games and launchers) are a special case — see [Administrator rights](#administrator-rights).
 - Switching the mode or marking a button hardware/software writes the key layout to the mouse once.
 
@@ -230,7 +232,7 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md): status report, all commands, button co
 
 ## Запуск
 
-Скачайте `SM809Control_vX.Y.Z.exe` в [Releases](../../releases). Установка не нужна, программа работает в трее. В релизе есть и `SM809_IAP_zones_patcher.exe` — он делает прошивку «зоны» из фирменного прошивальщика; нужен только для зон подсветки, см. [tools/iap-patch](tools/iap-patch/README.md). Не запускайте одновременно с фирменной программой или веб-драйвером.
+Скачайте `SM809Control_vX.Y.Z.exe` в [Releases](../../releases). Установка не нужна, программа работает в трее. Значок батареи в трее следует теме панели задач: на светлой контур тёмный, на тёмной — белый. В релизе есть и `SM809_IAP_zones_patcher.exe` — он делает прошивку «зоны» из фирменного прошивальщика; нужен только для зон подсветки, см. [tools/iap-patch](tools/iap-patch/README.md). Не запускайте одновременно с фирменной программой или веб-драйвером.
 
 **Первый запуск.**
 1. Выберите режим кнопок (его можно поменять потом).
@@ -239,6 +241,8 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md): status report, all commands, button co
 **Про программный режим.**
 - Без запущенной программы программные кнопки молчат. Включите «Настройки → Кнопки и профили → При выходе из программы возвращать аппаратную раскладку», если мышь должна работать как обычно после закрытия программы (одна запись при каждом выходе и запуске).
 - При включённом японском методе ввода клавиши International на кнопках 14–16 может перехватывать IME раньше программы; если мешает, отметьте эти кнопки аппаратными.
+- Клавиши-носители — F13–F24 и International 1/4/5. SM809 Control держит свой перехватчик клавиатуры первым, но в редких случаях программа, которая сама читает эти клавиши, всё же может увидеть кнопку мыши как одну из них, а клавиши F13–F24 на клавиатуре (если они есть) срабатывают как программные кнопки мыши.
+- Shift, Ctrl и Alt на клавиатуре складываются с кнопкой: если кнопка шлёт F14, то Shift + кнопка придёт как Shift+F14. Это ещё одно сочетание на той же кнопке, его можно назначить в другой программе.
 - Программы, запущенные от администратора (некоторые игры и лаунчеры), — особый случай, см. [Права администратора](#права-администратора).
 - Смена режима или типа кнопки один раз записывает раскладку в мышь.
 

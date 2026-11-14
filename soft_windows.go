@@ -54,6 +54,7 @@ const (
 
 	msgSoftUpdate = WM_APP + 20 // (re)install or remove the hook
 	msgCapCancel  = WM_APP + 21
+	msgRehook     = WM_APP + 22 // put our hook back at the head of the chain
 )
 
 type KBDLLHOOKSTRUCT struct {
@@ -305,6 +306,9 @@ func (r *softRuntime) run() {
 				case msgCapCancel:
 					r.capFinish("")
 					continue
+				case msgRehook:
+					r.rehook()
+					continue
 				}
 			}
 			pTranslateMessage.Call(ptr(&m))
@@ -325,6 +329,7 @@ func (r *softRuntime) run() {
 	go func() {
 		for {
 			time.Sleep(2 * time.Second)
+			r.post(msgRehook)                // stay first among the keyboard hooks
 			r.setForeground(foregroundExe()) // fallback for missed WinEvents
 			r.changed()                      // the profile on the mouse may have changed
 			r.ensureCarrier()
@@ -354,6 +359,25 @@ func (r *softRuntime) updateHook() {
 		r.alive.Store(false)
 		logf("хук клавиатуры снят")
 	}
+}
+
+// rehook installs the keyboard hook again, so it is first in the chain:
+// Windows calls the low-level hooks newest first, and a program that installed
+// its own hook after us (Soundpad, hotkey tools) would otherwise see the
+// carrier key (F13–F24…) before we swallow it. The new hook is installed
+// before the old one is removed; hook callbacks run only while this thread
+// pumps messages, so no key is handled twice or lost. Hook thread only.
+func (r *softRuntime) rehook() {
+	if r.kbdHook == 0 {
+		return
+	}
+	h, _, err := pSetWindowsHookExW.Call(WH_KEYBOARD_LL, r.kcb, hinst, 0)
+	if h == 0 {
+		logf("keyboard hook (re-install): %v", err)
+		return
+	}
+	pUnhookWindowsHookEx.Call(r.kbdHook)
+	r.kbdHook = h
 }
 
 func (r *softRuntime) anySwallowed() bool {
@@ -606,6 +630,7 @@ func (r *softRuntime) setForeground(exe string) {
 	}
 	r.fgExe = exe
 	r.mu.Unlock()
+	r.post(msgRehook) // a program that just started may have hooked the keyboard
 	r.changed()
 }
 

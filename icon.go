@@ -28,9 +28,12 @@ func batteryIcon(percent int, charging, full bool) uintptr {
 	alpha := make([]float64, S*S)
 	f := float64(S) / 16.0
 
-	white := uint32(0xFFFFFF)
+	// the outline follows the taskbar: dark on a light taskbar, white on a dark one
+	outline := uint32(0xFFFFFF)
 	grey := uint32(0x9E9E9E)
-	outline := white
+	if taskbarLight {
+		outline, grey = 0x1F1F1F, 0x8A8A8A
+	}
 	if percent < 0 {
 		outline = grey
 	}
@@ -74,15 +77,31 @@ func batteryIcon(percent int, charging, full bool) uintptr {
 			{{8.3, 3.0}, {4.8, 8.6}, {8.0, 8.6}},
 			{{7.4, 13.0}, {11.0, 7.2}, {7.8, 7.2}},
 		}
-		for _, tri := range bolt {
-			tr := tri
-			for i := range tr {
-				tr[i][0] *= f
-				tr[i][1] *= f
+		// on a light taskbar the yellow bolt gets a dark edge: the same
+		// triangles grown around their centre, drawn first
+		layers := []struct {
+			grow float64
+			col  uint32
+		}{{1, 0xFFEB3B}}
+		if taskbarLight {
+			layers = []struct {
+				grow float64
+				col  uint32
+			}{{1.35, 0x1F1F1F}, {1, 0xFFC107}}
+		}
+		for _, l := range layers {
+			for _, tri := range bolt {
+				tr := tri
+				cx := (tr[0][0] + tr[1][0] + tr[2][0]) / 3
+				cy := (tr[0][1] + tr[1][1] + tr[2][1]) / 3
+				for i := range tr {
+					tr[i][0] = (cx + (tr[i][0]-cx)*l.grow) * f
+					tr[i][1] = (cy + (tr[i][1]-cy)*l.grow) * f
+				}
+				cv.blendShape(0, 0, S, S, l.col, alpha, func(px, py float64) float64 {
+					return triCoverage(px, py, tr)
+				})
 			}
-			cv.blendShape(0, 0, S, S, 0xFFEB3B, alpha, func(px, py float64) float64 {
-				return triCoverage(px, py, tr)
-			})
 		}
 	}
 
@@ -99,6 +118,25 @@ func batteryIcon(percent int, charging, full bool) uintptr {
 	h, _, _ := pCreateIconIndirect.Call(uintptr(unsafe.Pointer(&ii)))
 	pSelectObject.Call(cv.DC, cv.BMP) // so free() restores consistently
 	return h
+}
+
+// taskbarLight is true when Windows uses the light theme for the taskbar
+// (SystemUsesLightTheme). Read at start and on WM_SETTINGCHANGE; UI thread.
+var taskbarLight bool
+
+func readTaskbarLight() bool {
+	var k uintptr
+	key := `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize`
+	if r, _, _ := pRegOpenKeyExW.Call(HKEY_CURRENT_USER, uintptr(ptrU16(key)), 0, KEY_READ, ptr(&k)); r != 0 {
+		return false // Windows 7/8 or no value: the dark taskbar
+	}
+	defer pRegCloseKey.Call(k)
+	var v, typ uint32
+	n := uint32(4)
+	if r, _, _ := pRegQueryValueExW.Call(k, uintptr(ptrU16("SystemUsesLightTheme")), 0, ptr(&typ), ptr(&v), ptr(&n)); r != 0 || typ != 4 {
+		return false
+	}
+	return v != 0
 }
 
 // triCoverage: 4x4 supersampled triangle coverage.

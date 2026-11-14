@@ -157,3 +157,9 @@ Diagnostics on Bluetooth (2026-11-02): the BLE HID device has the same collectio
 ## 3.0.0: pinned buttons
 
 A button can be pinned in the main profile (`Profile.Pinned`, `Settings.DefaultProfile`). `Store.pinned(p)` returns the profile with the pinned buttons taken from the main one — both the hardware assignment and the software action — and every path that turns a profile into behaviour goes through it: the apply job, `Engine.diff` (pending changes) and the software-button press handler. The other profile keeps its own values; they come back when the pin is removed. Because the diff runs on the result, a switch between profiles that differ only in pinned buttons rewrites nothing. Saving the main profile while another one is on the mouse, or making another profile the main one, re-applies the key layout with `ApplyKeys` (diff-only). The main left button (12) cannot be pinned.
+
+## 3.0.4: modifiers add up with the button
+
+The 3.0.1–3.0.3 test builds had a per-button option to send a software key without the Shift/Ctrl/Alt held on the keyboard (release them for the system, press them back). It did not work reliably: hotkey programs read the modifier state later than the key event, and keeping the modifiers released while the button is held broke running in games. The option is removed (an old `clean` field in `data.json` is ignored). Modifiers held on the keyboard add up with the button's key, and this is documented as a feature: Shift + button = Shift+F14, one more combination on the same button.
+
+The keyboard hook re-install of 3.0.2 (stay first in the chain, `msgRehook`) is kept.

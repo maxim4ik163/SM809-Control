@@ -2063,12 +2063,16 @@ const MODE_INFO = () => ({
   },
   software: {
     title: L('Программные кнопки', 'Software buttons'),
-    text: L('Боковые и другие кнопки обрабатывает SM809 Control; мышь записывается один раз.', 'SM809 Control handles the side and other buttons; the mouse is written once.'),
+    text: L('Боковые и другие кнопки обрабатывает SM809 Control; мышь записывается один раз: на программные кнопки в неё записываются клавиши, которых нет на обычной клавиатуре, — F13–F24 и японские International 1, 4, 5. SM809 Control перехватывает их и выполняет назначенное действие.',
+      'SM809 Control handles the side and other buttons; the mouse is written once: the software buttons get keys an ordinary keyboard does not have — F13–F24 and the Japanese International 1, 4, 5. SM809 Control intercepts them and performs the assigned action.'),
     pros: [L('свои действия кнопок для каждой программы — переключаются мгновенно и без записи в мышь', 'own button actions for every program — switched instantly and without writing the mouse'),
       L('любые сочетания (Ctrl+Win+→), ввод текста и паролей, запуск программ', 'any combination (Ctrl+Win+→), typing texts and passwords, starting programs'),
       L('макросы без ограничений прошивки, с движением курсора', 'macros without firmware limits, with cursor moves'),
+      L('Shift, Ctrl и Alt на клавиатуре складываются с кнопкой: если на кнопке F14, то Shift + кнопка даёт Shift+F14 — ещё одно сочетание, которое можно назначить в другой программе', 'Shift, Ctrl and Alt held on the keyboard add up with the button: if the button sends F14, Shift + button gives Shift+F14 — one more combination to bind in another program'),
       L('огонь и DPI остаются — на кнопках, отмеченных как аппаратные; программной можно сделать любую кнопку, кроме основной левой', 'rapid fire and DPI stay — on buttons marked as hardware; any button but the main left one can be a software button')],
-    cons: [L('программные кнопки работают, только пока запущен SM809 Control', 'software buttons work only while SM809 Control is running'),
+    cons: [L('в редких случаях программы, которые сами используют F13–F24 (например, Soundpad), могут увидеть нажатие кнопки мыши как эту клавишу; а если на клавиатуре есть клавиши F13–F24, они будут срабатывать как программные кнопки мыши',
+      'in rare cases programs that use F13–F24 themselves (Soundpad, for example) may see a mouse button press as that key; and if your keyboard has F13–F24 keys, they act as the software mouse buttons'),
+      L('программные кнопки работают, только пока запущен SM809 Control', 'software buttons work only while SM809 Control is running'),
       L('программы, запущенные от имени администратора, могут не принимать нажатия', 'programs running as administrator may ignore the presses')],
   },
 });
@@ -2079,8 +2083,8 @@ function modeDialog(first) {
     <ul class="pros">${info[m].pros.map(x => `<li>${esc(x)}</li>`).join('')}</ul><ul class="cons">${info[m].cons.map(x => `<li>${esc(x)}</li>`).join('')}</ul>
     <button class="${cur === m ? '' : 'primary'}" data-mode="${m}" ${cur === m ? 'disabled' : ''}>${cur === m ? L('Сейчас включён', 'Current mode') : L('Выбрать', 'Choose')}</button></div>`;
   modal(`<h2>${first ? L('Как будут работать кнопки мыши?', 'How should the mouse buttons work?') : L('Режим кнопок', 'Button mode')}</h2>
-    <p class="muted small">${L('Режим можно сменить в любой момент: «Настройки → Кнопки» или значок «Кнопки» вверху. Смена режима — одна запись раскладки кнопок в мышь; назначения обоих режимов сохраняются.',
-      'You can change the mode at any time: Settings → Buttons, or the Buttons badge at the top. Switching writes the button layout to the mouse once; the assignments of both modes are kept.')}</p>
+    <p class="muted small">${L('Режим можно сменить в любой момент: «Настройки → Кнопки и профили» или значок «Кнопки» вверху. Смена режима — одна запись раскладки кнопок в мышь; назначения обоих режимов сохраняются.',
+      'You can change the mode at any time: Settings → Buttons and profiles, or the Buttons badge at the top. Switching writes the button layout to the mouse once; the assignments of both modes are kept.')}</p>
     <div class="grid2">${card('hardware')}${card('software')}</div>
     <div class="foot"><button data-r="later">${first ? L('Решить позже', 'Decide later') : L('Отмена', 'Cancel')}</button></div>`, box => {
     $('#modalBox').style.maxWidth = '880px';

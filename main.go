@@ -15,7 +15,7 @@ import (
 	"unsafe"
 )
 
-const appVersion = "3.0.0"
+const appVersion = "3.0.4"
 
 const projectURL = "https://github.com/maxim4ik163/SM809-Control"
 
@@ -159,6 +159,7 @@ func addTray() {
 	nid.UID = 1
 	nid.UFlags = NIF_ICON | NIF_TIP | NIF_MESSAGE | NIF_SHOWTIP
 	nid.UCallbackMessage = msgTray
+	taskbarLight = readTaskbarLight()
 	curIcon = batteryIcon(-1, false, false)
 	nid.HIcon = curIcon
 	copyU16(nid.SzTip[:], "SM809 Control")
@@ -358,6 +359,13 @@ func mainWndProc(hwnd, msg, wp, lp uintptr) uintptr {
 	case msgOpenUI:
 		openUI()
 		return 0
+	case WM_SETTINGCHANGE:
+		// the light/dark theme switch arrives as "ImmersiveColorSet"
+		if l := readTaskbarLight(); l != taskbarLight {
+			taskbarLight = l
+			updateTray()
+		}
+		return 0
 	case WM_DEVICECHANGE:
 		pSetTimer.Call(hwnd, timerSoon, 1000, 0)
 		return 0
@@ -521,4 +529,3 @@ func startedByAutorun() bool {
 	}
 	return false
 }
-

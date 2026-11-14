@@ -2,6 +2,20 @@
 
 Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/releases).
 
+## 3.0.4 — 2026-11-14
+
+**English**
+
+- **Software buttons no longer leak their carrier key to other programs.** A software button makes the mouse send a carrier key (F13–F24, International 1/4/5) that SM809 Control swallows. Windows calls keyboard hooks newest first, so a program started after SM809 Control with its own keyboard hook (Soundpad, for example) saw the carrier first: button 4 played the sound bound to F16. SM809 Control now re-installs its hook every 2 s and whenever the window in front changes, so it stays first.
+- The button-mode dialog says which keys software mode writes to the mouse, the rare conflict with programs (or keyboards) that use F13–F24, and that Shift, Ctrl and Alt held on the keyboard add up with a button: Shift + button gives Shift+F14, one more combination on the same button.
+- **The tray battery icon follows the taskbar theme**: a dark outline on a light taskbar (the white one was hard to see), white on a dark one. It is redrawn as soon as the theme changes; on a light taskbar the charging bolt gets a dark edge.
+
+**Русский**
+
+- **Программные кнопки больше не «пропускают» клавишу-носитель в другие программы.** На программную кнопку мышь шлёт клавишу-носитель (F13–F24, International 1/4/5), которую SM809 Control перехватывает. Windows вызывает перехватчики клавиатуры от последнего установленного к первому, поэтому программа со своим перехватом, запущенная после SM809 Control (например, Soundpad), видела носитель первой: кнопка 4 включала звук, назначенный на F16. Теперь SM809 Control переустанавливает свой перехватчик каждые 2 с и при смене активного окна и остаётся первым.
+- В окне выбора режима кнопок написано, какие клавиши программный режим записывает в мышь, о редком конфликте с программами (или клавиатурами), которые используют F13–F24, и о том, что Shift, Ctrl и Alt на клавиатуре складываются с кнопкой: Shift + кнопка даёт Shift+F14 — ещё одно сочетание на той же кнопке.
+- **Значок батареи в трее следует теме панели задач**: на светлой контур тёмный (белый было плохо видно), на тёмной — белый. Перерисовывается сразу при смене темы; на светлой панели у молнии зарядки тёмный край.
+
 ## 3.0.0 — 2026-11-14
 
 **English**
