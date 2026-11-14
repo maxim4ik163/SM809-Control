@@ -2,9 +2,11 @@
 
 Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/releases).
 
-## Unreleased
+## 3.0.0 — 2026-11-14
 
 **English**
+
+The first stable release since 2.2.0. It includes the lighting zones of the 2.3.0 test release (below) and a reworked window: one *Profile* item with section tabs, folders for profiles and game rules, pinned buttons, a battery forecast in hours of use and an always-on error log.
 
 - **Battery forecast counts only the time the mouse is connected.** It used calendar time, so nights and weekends with the PC off (the mouse sleeps and hardly drains) made the forecast jump several times up after every break. *Time left* is now hours of use, with calendar days at your usual routine next to it (average time connected per day over the last two weeks, after 3 days of history). *Drain* is shown in % per hour of use.
 - **Pinned buttons.** In the main profile any button (except the main left one) can be pinned: it then does the same in every profile. Other profiles keep their own value, which comes back when the pin is removed. A switch between profiles that differ only in pinned buttons does not rewrite the key layout.
@@ -20,6 +22,8 @@ Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/re
 - **Error log `errors.log`**, written always, whatever the *Write a log* setting: errors of requests (what pops up at the bottom right), of writing the mouse, crashes with their place in the code and errors of the window. Messages only, never request data. *Settings → Application* shows the time of the last error and opens the log or its folder.
 
 **Русский**
+
+Первый стабильный выпуск после 2.2.0. В него вошли зоны подсветки из тестового выпуска 2.3.0 (ниже) и переработанное окно: один пункт «Профиль» с вкладками разделов, папки для профилей и правил игр, фиксация кнопок, прогноз заряда в часах работы и журнал ошибок, который пишется всегда.
 
 - **Прогноз заряда учитывает только время, пока мышь на связи.** Раньше считалось календарное время, и ночи и выходные с выключенным ПК (мышь спит и почти не тратит заряд) после каждого перерыва завышали прогноз в разы. *Хватит примерно на* теперь показывает часы работы, а рядом — дни при вашем обычном режиме (среднее время на связи в сутки за последние две недели, после 3 дней истории). *Расход* — в % за час работы.
 - **Фиксация кнопок.** В основном профиле любую кнопку (кроме основной левой) можно зафиксировать: она будет делать одно и то же во всех профилях. Свои значения в других профилях сохраняются и возвращаются, если снять фиксацию. Если профили отличаются только зафиксированными кнопками, при переключении раскладка не перезаписывается.

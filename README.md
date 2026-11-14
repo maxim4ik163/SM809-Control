@@ -1,6 +1,6 @@
 # SM809 Control
 
-An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gaming mouse (Beken BK3633, VID `04F3`). It replaces the vendor's Windows software and does more: software buttons that follow the program in front, typing passwords and starting programs from a mouse button, unlimited profiles, an editable DPI table, a full macro editor, battery history and forecast.
+An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gaming mouse (Beken BK3633, VID `04F3`). It replaces the vendor's Windows software and does more: software buttons that follow the program in front, typing passwords and starting programs from a mouse button, unlimited profiles in folders, buttons pinned across profiles, an editable DPI table, a full macro editor, lighting zones with a patched firmware, battery history and forecast.
 
 **[Русская версия ниже ↓](#sm809-control-по-русски)**
 
@@ -10,7 +10,8 @@ An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gamin
 
 ## Features
 
-- **Two button modes.** The app asks on first start; you can switch at any time in Settings → Buttons or with the **Buttons** badge at the top. Assignments of both modes are kept.
+- **One *Profile* page.** Everything a profile holds — **Buttons, DPI, Lighting, Performance** — is on tabs next to the profile list at the top. A dot on a tab shows unsaved changes in that section (an outlined dot: saved but not yet written to the mouse).
+- **Two button modes.** The app asks on first start; you can switch at any time in Settings → Buttons and profiles or with the **Buttons** badge at the top. Assignments of both modes are kept.
 
   ![Button modes](docs/screenshots/modes.png)
 
@@ -25,20 +26,23 @@ An unofficial, open-source configuration app for the **SM809 / SM809 Pro** gamin
   - nothing.
 - **Mixed buttons.** In software mode any button except the main left one can be marked *hardware button* to keep rapid fire, DPI or a firmware macro on it. The list follows the button layout of the mouse; a green number is a software button, a red number is a hardware one. Pressing a software button lights it up in the window. Every button has **Reset to default**.
 - **Buttons per program.** A rule "program → profile" switches the software buttons the instant that program's window comes to the front.
+- **Pinned buttons.** In the main profile any button can be pinned: it then does the same in every profile, while the other profiles keep their own value for when the pin is removed. Switching between profiles that differ only in pinned buttons writes nothing to the mouse.
+- **Key field with a drop-down list.** Type “f13” and press Enter — no scrolling through all the keys.
 - **Hardware buttons.** Any function on the 15 remappable buttons: mouse buttons, key or combination, media keys, editing shortcuts, DPI +/−/cycle, DPI lock (sniper), rapid fire with interval and count, disable, lighting toggle, firmware macro. The main left button is locked so the mouse can never lose its click.
 - **DPI.** 1 to 6 levels, any value per level (limits and step follow the sensor, e.g. PAW3311: 200–24000 in steps of 100), a colour per level, start level.
-- **Lighting.** All 11 modes supported by the firmware. With the zones firmware (made from the vendor updater by `SM809_IAP_zones_patcher.exe`, see [tools/iap-patch](tools/iap-patch/README.md)): side buttons and wheel switched on/off separately, a fixed logo colour of your choice or logo off.
+- **Lighting.** All 11 modes supported by the firmware, and an *All lighting On/Off* switch that keeps the chosen modes. With the zones firmware (made from the vendor updater by `SM809_IAP_zones_patcher.exe`, see [tools/iap-patch](tools/iap-patch/README.md)): side buttons and wheel switched on/off separately, a fixed logo colour of your choice or logo off.
 - **Performance.** Polling rate (the list follows the connection), lift-off distance (LOD 1/2 mm, missing in the vendor Windows app), sleep timer, wake on movement, lighting off while moving, angle snapping, Motion Sync, ripple control.
 - **Macros.** Recorder (keys and mouse buttons, real or fixed delays) and manual editor (press / release / delay, type a whole text, reorder). Firmware macros are encoded exactly like the vendor driver does, with a memory meter; software-mode macros have no such limits. Macros can be sorted into folders (collapsible, drag and drop, search) so a long list stays manageable.
-- **Profiles.** Unlimited, stored on the PC. Only the current one is written to the mouse, and **only the settings that differ**, to spare the flash memory.
-- **Per-game profiles** (opt-in). A profile is written to the mouse when an `.exe` starts and reverted when it exits. Off by default; turned on only after a warning about flash wear. Software buttons don't need it.
+- **Profiles.** Unlimited, stored on the PC, sorted into folders (collapsible, drag and drop, search) together with the game rules. A new profile starts as a copy of the main one. Only the current profile is written to the mouse, and **only the settings that differ**, to spare the flash memory.
+- **Mouse settings by game** (opt-in, *Switch the mouse settings when a game starts*). DPI, lighting, polling rate and hardware buttons of a game's profile are written to the mouse when its `.exe` starts and reverted when it exits. Off by default; turned on only after a warning about flash wear. Software buttons follow the window in front without it.
 - **On-screen popups** for DPI, profile and button-set changes with a customisable look.
-- **Connection and battery.** Cable / 2.4 GHz dongle / Bluetooth 1 / Bluetooth 2, battery and charging, also over Bluetooth. Battery history chart, drain per day, time left or time to full, low-battery notifications. The bogus reading the mouse sends for the first seconds after connecting (0 %, then too high) is ignored, and the back-and-forth at a 10 % step (80 ↔ 90 every few seconds) is smoothed out: a drop counts after 3 minutes, a step back after 30.
+- **Connection and battery.** Cable / 2.4 GHz dongle / Bluetooth 1 / Bluetooth 2, battery and charging, also over Bluetooth. Battery history chart, drain per hour of use, time left in **hours of use** (only the time the mouse is connected counts, so nights and weekends with the PC off do not inflate it) and in days at your usual routine, time to full, low-battery notifications. The bogus reading the mouse sends for the first seconds after connecting (0 %, then too high) is ignored, and the back-and-forth at a 10 % step (80 ↔ 90 every few seconds) is smoothed out: a drop counts after 3 minutes, a step back after 30.
 - **Connection diagnostics.** Settings → Mouse → *Connection diagnostics…* shows what Windows exposes and what the mouse answers; save it to a file for a bug report.
 - **Read settings from the mouse** (cable). Reads the mouse memory (read-only), compares it with the current profile and can turn it into a profile.
+- **Error log.** Errors are always written to `errors.log`, whatever the *Write a log* setting says: what pops up in the window, failed writes to the mouse, crashes with their place in the code. Settings → Application shows the last error and opens the log.
 - **Experimental:** key debounce threshold, a hidden firmware setting for switches that start to double-click.
-- **The window remembers its size, position and maximized state** between openings (close it to the tray and open it again).
-- **Tray icon** with battery level and quick profile switching, autostart, **backup** of profiles and macros or of all app data.
+- **The window remembers its size, position and maximized state** between openings (close it to the tray and open it again). It is at least 1160 px wide so the profile bar fits on one line.
+- **Tray icon** with battery level and quick profile switching (folders as submenus), autostart, **backup** of profiles and macros or of all app data.
 - **English and Russian** UI.
 
 | | |
@@ -71,7 +75,7 @@ After using the vendor software, use **Settings → Mouse → Read settings from
 
 ## Download and run
 
-Get `SM809Control_vX.Y.Z.exe` from [Releases](../../releases). It is a single file; no installation.
+Get `SM809Control_vX.Y.Z.exe` from [Releases](../../releases). It is a single file; no installation. The release also has `SM809_IAP_zones_patcher.exe`, which makes the zones firmware from the vendor updater — only needed for the lighting zones, see [tools/iap-patch](tools/iap-patch/README.md).
 
 - Windows 10/11. The UI uses the WebView2 runtime that ships with Windows; without it the UI opens in the default browser.
 - The app lives in the tray. Left click opens the window, right click opens the menu.
@@ -83,12 +87,12 @@ Get `SM809Control_vX.Y.Z.exe` from [Releases](../../releases). It is a single fi
 2. The app has to know what is in the mouse. With the cable connected, press **Read from the mouse** in the yellow bar: nothing is written, and from then on only differences are. Without the cable, check the tabs and press **Write … to the mouse** once.
 
 **Notes on software mode.**
-- Software buttons do nothing while SM809 Control is not running. Turn on *Settings → Buttons → Restore the hardware layout when the app exits* if you want the mouse to work normally after closing the app (this costs one write per exit and start).
+- Software buttons do nothing while SM809 Control is not running. Turn on *Settings → Buttons and profiles → Restore the hardware layout when the app exits* if you want the mouse to work normally after closing the app (this costs one write per exit and start).
 - With a Japanese input method active, the International keys of buttons 14–16 may be seen by the IME before the app; mark those buttons as hardware if that bothers you.
 - Programs running as administrator (some games and launchers) are a special case — see [Administrator rights](#administrator-rights).
 - Switching the mode or marking a button hardware/software writes the key layout to the mouse once.
 
-Data is stored in `%APPDATA%\SM809Control` (`data.json`: profiles, macros, rules, settings; `device.json`: what is on the mouse; `battery.json`: battery history).
+Data is stored in `%APPDATA%\SM809Control` (`data.json`: profiles, macros, rules, folders, settings; `device.json`: what is on the mouse; `battery.json`: battery history; `window.json`: window size and position; `errors.log`: the error log; `sm809control.log`: the detailed log, when turned on).
 
 ## Administrator rights
 
@@ -142,7 +146,7 @@ sh linuxtest/run.sh     # engine/API logic with HID stubbed out (Linux/macOS)
 2. Push to `main`.
 3. On GitHub, create a release with the tag `vX.Y.Z` (the same version).
 
-The `build` workflow runs the tests, builds `SM809Control_vX.Y.Z.exe` and attaches it to the release. It fails if the tag does not match `appVersion`. Every push and pull request also builds the exe as a workflow artifact.
+The `build` workflow runs the tests, builds `SM809Control_vX.Y.Z.exe` and `SM809_IAP_zones_patcher.exe` and attaches both to the release. It fails if the tag does not match `appVersion`. Every push and pull request also builds the exe as a workflow artifact.
 
 ## Project layout
 
@@ -153,13 +157,16 @@ The `build` workflow runs the tests, builds `SM809Control_vX.Y.Z.exe` and attach
 | `engine.go` | Device state, diff-only apply queue, per-game profile stack, notifications |
 | `softbind.go`, `softkeys.go` | Button modes: carrier layout, software actions, validation, migration |
 | `soft_windows.go`, `soft_actions_windows.go` | Keyboard hook, SendInput, foreground window, text input, macros, starting programs, DPAPI |
-| `store.go` | Data model and persistence |
+| `store.go` | Data model and persistence; pinned buttons (`Store.pinned`) |
+| `macrogroups.go` | Folders of the macro, profile and rule lists |
+| `errlog.go` | Error log (`errors.log`), written always |
 | `battery.go` | Battery history and forecast |
 | `api.go` | Local HTTP API (127.0.0.1, random port, token) + SSE for the UI |
 | `main.go`, `osd.go`, `icon.go` | Tray, on-screen popups, battery tray icon (Win32) |
 | `uihost.go`, `winstate.go` | WebView2 window process; window size/position/maximized state (`window.json`) |
 | `web/` | UI |
 | `cmd/keyprobe/` | Small tool that logs the keys the mouse sends (used to verify carrier keys) |
+| `tools/iap-patch/` | `SM809_IAP_zones_patcher.exe`: makes the zones firmware updater from the vendor updater |
 | `testdata/` | Key probe logs and connection diagnostics from real hardware |
 | `docs/PROTOCOL.md` | Reverse-engineered HID protocol |
 | `docs/SOFT_BINDINGS.md` | Design and test notes for software buttons |
@@ -172,13 +179,14 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md): status report, all commands, button co
 
 # SM809 Control по-русски
 
-Неофициальная программа с открытым кодом для настройки мыши **SM809 / SM809 Pro**. Заменяет фирменную программу и умеет больше: программные кнопки, которые меняются вслед за активной программой, ввод паролей и запуск программ с кнопки мыши, неограниченное число профилей, любые значения DPI, полноценный редактор макросов, история и прогноз заряда.
+Неофициальная программа с открытым кодом для настройки мыши **SM809 / SM809 Pro**. Заменяет фирменную программу и умеет больше: программные кнопки, которые меняются вслед за активной программой, ввод паролей и запуск программ с кнопки мыши, неограниченное число профилей с папками, кнопки, зафиксированные во всех профилях, любые значения DPI, полноценный редактор макросов, зоны подсветки с пропатченной прошивкой, история и прогноз заряда.
 
 > ⚠️ Программа не связана с производителем мыши. Протокол восстановлен самостоятельно, каждая команда сверена байт-в-байт с официальным веб-драйвером, но используете вы её на свой риск.
 
 ## Возможности
 
-- **Два режима кнопок.** Программа спрашивает при первом запуске; режим меняется в любой момент в «Настройки → Кнопки» или значком «Кнопки» вверху. Назначения обоих режимов сохраняются.
+- **Одна страница «Профиль».** Всё, что хранится в профиле, — **Кнопки, DPI, Подсветка, Производительность** — на вкладках рядом со списком профилей вверху. Точка на вкладке — в этом разделе есть несохранённые изменения (контурная — сохранено, но ещё не записано в мышь).
+- **Два режима кнопок.** Программа спрашивает при первом запуске; режим меняется в любой момент в «Настройки → Кнопки и профили» или значком «Кнопки» вверху. Назначения обоих режимов сохраняются.
   - *Аппаратный*: всё хранится в мыши и работает без программы на любом компьютере.
   - *Программный*: кнопки обрабатывает SM809 Control. Мышь записывается **один раз**: каждая кнопка шлёт клавишу, которой нет на обычной клавиатуре (F13–F24 и клавиши японской клавиатуры International 1, 4, 5). Программа перехватывает её и выполняет действие текущего профиля. Смена действий и переключение программ **не пишут в мышь**.
 - **Действия программных кнопок:**
@@ -190,20 +198,23 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md): status report, all commands, button co
   - ничего.
 - **Смешанные кнопки.** В программном режиме любую кнопку, кроме основной левой, можно отметить «аппаратной», чтобы оставить на ней огонь, DPI или макрос прошивки. Список повторяет расположение кнопок на мыши: зелёный номер — программная кнопка, красный — аппаратная. Нажатая программная кнопка подсвечивается в окне. У каждой кнопки есть «По умолчанию».
 - **Кнопки по программам.** Правило «программа → профиль» переключает программные кнопки в момент, когда окно программы становится активным.
+- **Фиксация кнопок.** В основном профиле любую кнопку можно зафиксировать: она делает одно и то же во всех профилях, а свои значения других профилей сохраняются на случай, если фиксацию снять. Переключение между профилями, которые отличаются только зафиксированными кнопками, ничего не пишет в мышь.
+- **Поле клавиши с выпадающим списком:** набрать «f13» и нажать Enter — без пролистывания всех клавиш.
 - **Аппаратные кнопки:** любая функция на 15 переназначаемых кнопок — кнопки мыши, клавиша или сочетание, мультимедиа, правка, DPI, фиксация DPI, «огонь», отключение, подсветка, макрос прошивки. Основная левая кнопка заблокирована.
 - **DPI:** 1–6 уровней с любыми значениями, цвет каждого уровня, стартовый уровень.
-- **Подсветка:** все 11 режимов прошивки. С прошивкой «зоны» (её делает из фирменного прошивальщика `SM809_IAP_zones_patcher.exe`, см. [tools/iap-patch](tools/iap-patch/README.md)): боковые кнопки и колесо включаются и выключаются отдельно, логотип — постоянный цвет на выбор или выключен.
+- **Подсветка:** все 11 режимов прошивки и переключатель «Вся подсветка Вкл/Выкл», который сохраняет выбранные режимы. С прошивкой «зоны» (её делает из фирменного прошивальщика `SM809_IAP_zones_patcher.exe`, см. [tools/iap-patch](tools/iap-patch/README.md)): боковые кнопки и колесо включаются и выключаются отдельно, логотип — постоянный цвет на выбор или выключен.
 - **Производительность:** частота опроса, высота отрыва LOD (её нет в фирменной программе), сон, пробуждение движением, angle snapping, Motion Sync, Ripple.
 - **Макросы:** запись и ручной редактор, ввод целого текста. Макросы прошивки кодируются точно как в официальном драйвере, с индикатором памяти; у макросов программного режима этих ограничений нет. Макросы можно раскладывать по папкам (сворачиваются, перетаскивание, поиск), чтобы длинный список не мешал.
-- **Профили:** без ограничения количества, хранятся на компьютере. В мышь пишется только то, что отличается.
-- **Переключение по играм** (по желанию): профиль записывается в мышь при запуске exe и возвращается при выходе. По умолчанию выключено и включается только после предупреждения об износе флеш-памяти. Программным кнопкам оно не нужно.
+- **Профили:** без ограничения количества, хранятся на компьютере, раскладываются по папкам (сворачиваются, перетаскивание, поиск) вместе с правилами игр. Новый профиль создаётся копией основного. В мышь пишется только текущий профиль и только то, что отличается.
+- **Настройки мыши по играм** (по желанию, «Переключать настройки в мыши по запуску игр»): DPI, подсветка, частота опроса и аппаратные кнопки профиля игры записываются в мышь при запуске exe и возвращаются при выходе. По умолчанию выключено и включается только после предупреждения об износе флеш-памяти. Программные кнопки следуют за активным окном и без этого.
 - **Всплывающие окна** DPI, профиля и набора кнопок с настройкой внешнего вида.
-- **Подключение и батарея:** провод, донгл, BT1, BT2, заряд — в том числе по Bluetooth. График заряда, расход в сутки, прогноз остатка и времени до полной зарядки, уведомления. Ложный заряд в первые секунды после подключения (0 %, затем завышенный) не учитывается, а «пила» на границе шага 10 % (80 ↔ 90 каждые несколько секунд) сглаживается: снижение засчитывается через 3 минуты, обратный шаг — через 30.
+- **Подключение и батарея:** провод, донгл, BT1, BT2, заряд — в том числе по Bluetooth. График заряда, расход за час работы, остаток в **часах работы** (считается только время, пока мышь на связи, поэтому ночи и выходные с выключенным ПК прогноз не завышают) и в днях при обычном режиме, время до полной зарядки, уведомления. Ложный заряд в первые секунды после подключения (0 %, затем завышенный) не учитывается, а «пила» на границе шага 10 % (80 ↔ 90 каждые несколько секунд) сглаживается: снижение засчитывается через 3 минуты, обратный шаг — через 30.
 - **Диагностика подключения:** «Настройки → Мышь → Диагностика подключения…» показывает, что видит Windows и что отвечает мышь; можно сохранить в файл для отчёта об ошибке.
 - **Чтение настроек из мыши** (по кабелю): только чтение, сравнение с профилем, можно сделать из этого профиль.
+- **Журнал ошибок.** Ошибки пишутся в `errors.log` всегда, независимо от галочки «Вести журнал»: то, что всплывает в окне, неудачные записи в мышь, сбои с местом в коде. В «Настройки → Программа» видно последнюю ошибку и открывается журнал.
 - **Экспериментальное:** антидребезг кнопок — скрытая настройка прошивки на случай даблкликов.
-- **Окно запоминает размер, положение и «развёрнуто во весь экран»** между открытиями (закрыли в трей — открылось таким же).
-- **Трей, автозапуск, резервная копия** профилей и макросов или всех данных.
+- **Окно запоминает размер, положение и «развёрнуто во весь экран»** между открытиями (закрыли в трей — открылось таким же). Ширина окна не меньше 1160 px, чтобы строка профиля помещалась целиком.
+- **Трей** (профили по папкам в подменю), **автозапуск, резервная копия** профилей и макросов или всех данных.
 - **Русский и английский** интерфейс.
 
 ## Чем лучше фирменных программ
@@ -219,19 +230,19 @@ See [docs/PROTOCOL.md](docs/PROTOCOL.md): status report, all commands, button co
 
 ## Запуск
 
-Скачайте `SM809Control_vX.Y.Z.exe` в [Releases](../../releases). Установка не нужна, программа работает в трее. Не запускайте одновременно с фирменной программой или веб-драйвером.
+Скачайте `SM809Control_vX.Y.Z.exe` в [Releases](../../releases). Установка не нужна, программа работает в трее. В релизе есть и `SM809_IAP_zones_patcher.exe` — он делает прошивку «зоны» из фирменного прошивальщика; нужен только для зон подсветки, см. [tools/iap-patch](tools/iap-patch/README.md). Не запускайте одновременно с фирменной программой или веб-драйвером.
 
 **Первый запуск.**
 1. Выберите режим кнопок (его можно поменять потом).
 2. Программе нужно знать, что записано в мыши. Подключите кабель и нажмите «Прочитать из мыши» в жёлтой полосе: ничего не записывается, дальше пишутся только отличия. Без кабеля один раз запишите профиль целиком.
 
 **Про программный режим.**
-- Без запущенной программы программные кнопки молчат. Включите «Настройки → Кнопки → При выходе из программы возвращать аппаратную раскладку», если мышь должна работать как обычно после закрытия программы (одна запись при каждом выходе и запуске).
+- Без запущенной программы программные кнопки молчат. Включите «Настройки → Кнопки и профили → При выходе из программы возвращать аппаратную раскладку», если мышь должна работать как обычно после закрытия программы (одна запись при каждом выходе и запуске).
 - При включённом японском методе ввода клавиши International на кнопках 14–16 может перехватывать IME раньше программы; если мешает, отметьте эти кнопки аппаратными.
 - Программы, запущенные от администратора (некоторые игры и лаунчеры), — особый случай, см. [Права администратора](#права-администратора).
 - Смена режима или типа кнопки один раз записывает раскладку в мышь.
 
-Данные хранятся в `%APPDATA%\SM809Control`.
+Данные хранятся в `%APPDATA%\SM809Control`: `data.json` (профили, макросы, правила, папки, настройки), `device.json` (что записано в мышь), `battery.json` (история заряда), `window.json` (размер и положение окна), `errors.log` (журнал ошибок), `sm809control.log` (подробный журнал, если включён).
 
 ## Права администратора
 
@@ -256,4 +267,4 @@ SM809 Control не нужны права администратора. Наст�
 
 Снятая галочка при запуске от администратора удаляет задачу. Программа без прав задачу изменить не может — галочка неактивна, рядом подсказка; чтобы выключить автозапуск или вернуться к обычной записи `Run`, один раз запустите программу от администратора. Вручную: `schtasks /Delete /TN SM809Control /F` в консоли администратора или Планировщик заданий → Библиотека → *SM809Control* → Удалить.
 
-**Сборка и выпуск:** см. разделы [Building](#building) и [Releasing](#releasing) выше. Чтобы выпустить версию, создайте на GitHub релиз с тегом `vX.Y.Z`, совпадающим с `appVersion`: сборка сама приложит `SM809Control_vX.Y.Z.exe`.
+**Сборка и выпуск:** см. разделы [Building](#building) и [Releasing](#releasing) выше. Чтобы выпустить версию, создайте на GitHub релиз с тегом `vX.Y.Z`, совпадающим с `appVersion`: сборка сама приложит `SM809Control_vX.Y.Z.exe` и `SM809_IAP_zones_patcher.exe`.
