@@ -2255,8 +2255,8 @@ function softHoldSwitch(body, b, set) {
   d.innerHTML = `<div class="row"><span class="muted">${L('Как работает', 'Behaviour')}:</span>
       <label class="check"><input type="radio" name="shold" value="" ${b.hold ? '' : 'checked'}>${L('пока кнопка зажата', 'while the button is held')}</label>
       <label class="check"><input type="radio" name="shold" value="1" ${b.hold ? 'checked' : ''}>${L('нажал — держится, нажал ещё раз — отпускается', 'press to hold, press again to release')}</label></div>
-    ${b.hold ? `<p class="muted small">${L('Первое нажатие зажимает, второе отпускает — без повторов. Если за это время вы сами нажмёте и отпустите ту же клавишу или кнопку, удержание снимется, и следующее нажатие зажмёт её снова. При смене профиля с другим действием на этой кнопке удержание снимается.',
-      'The first press holds, the second releases — no repeats. If you press and release the same key or button yourself meanwhile, the hold ends and the next press holds it again. Switching to a profile with another action on this button releases it.')}</p>` : ''}`;
+    ${b.hold ? `<p class="muted small">${L('Первое нажатие зажимает, второе отпускает — без повторов. Если за это время вы сами нажмёте и отпустите ту же клавишу или кнопку, удержание закончится, и следующее нажатие начнёт новое. При смене профиля с другим действием на этой кнопке удержание снимается.',
+      'The first press holds, the second releases — no repeats. If you press and release the same key or button yourself meanwhile, the hold ends and the next press starts a new one. Switching to a profile with another action on this button releases it.')}</p>` : ''}`;
   body.appendChild(d);
   d.querySelectorAll('[name=shold]').forEach(r => r.onchange = () => set({ ...b, hold: !!r.value }));
 }

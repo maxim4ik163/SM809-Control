@@ -293,6 +293,7 @@ func (r *softRuntime) post(msg uint32) {
 // run starts the hook thread, the worker and the foreground fallback timer.
 func (r *softRuntime) run() {
 	ready := make(chan struct{})
+	releaseLeftovers()
 	go dbgRun()
 	go func() {
 		runtime.LockOSThread()
@@ -495,15 +496,10 @@ func (r *softRuntime) handle(ev softEvent) {
 	if r.held[ev.slot] != nil {
 		return
 	}
-	// "press to hold": the second press releases (or holds again if a real
-	// press and release of the same key or button already let go of it)
+	// "press to hold": the second press releases. (A real press and release
+	// of the same key or button ends the hold earlier: watchHold.)
 	if hd := r.holds[ev.slot]; hd != nil {
 		r.held[ev.slot] = &softHeld{out: SoftOut{Kind: SoftDisable}}
-		if !hd.unchecked && !vksDown(holdVKs(hd.out)) {
-			dbg("кнопка %d: удержание уже снято — зажимаю снова", ev.slot+1)
-			holdPress(hd.out)
-			return
-		}
 		dbg("кнопка %d: отпускаю удержание (unchecked=%v)", ev.slot+1, hd.unchecked)
 		holdRelease(hd.out)
 		delete(r.holds, ev.slot)
@@ -539,7 +535,7 @@ func (r *softRuntime) handle(ev softEvent) {
 		r.held[ev.slot] = &softHeld{out: SoftOut{Kind: SoftDisable}}
 		dbg("кнопка %d: удержание %s %s", ev.slot+1, out.Kind, out.Button+out.Combo.String())
 		holdPress(out)
-		go r.checkHold(ev.slot, hd)
+		go r.watchHold(ev.slot, hd)
 		return
 	}
 	h := &softHeld{out: out}
@@ -600,18 +596,66 @@ func vksDown(vks []uint16) bool {
 	return true
 }
 
-// checkHold: shortly after a hold started, make sure Windows reports the key
-// or button down. If it does not (e.g. a program running as administrator is
-// in front), the second press always releases instead of pressing again.
-func (r *softRuntime) checkHold(slot int, hd *softHold) {
+// watchHold: 80 ms after a hold started, make sure Windows reports the key or
+// button down, then check it every 50 ms while the hold lasts. When a real
+// press and release of the same key or button let go of it, the hold ends
+// (the button is no longer lit; the next press starts a new hold). If Windows
+// never reported it down (e.g. a program running as administrator is in
+// front), it is not watched and only the second press releases it.
+func (r *softRuntime) watchHold(slot int, hd *softHold) {
 	time.Sleep(80 * time.Millisecond)
-	down := vksDown(holdVKs(hd.out))
+	vks := holdVKs(hd.out)
+	down := vksDown(vks)
 	dbg("кнопка %d: проверка удержания через 80 мс — %v, в Windows: %s", slot+1, down, dbgState())
-	r.mu.Lock()
-	if !down && r.holds[slot] == hd {
-		hd.unchecked = true
+	if !down {
+		r.mu.Lock()
+		if r.holds[slot] == hd {
+			hd.unchecked = true
+		}
+		r.mu.Unlock()
+		return
 	}
-	r.mu.Unlock()
+	t := time.NewTicker(50 * time.Millisecond)
+	defer t.Stop()
+	for range t.C {
+		r.mu.Lock()
+		if r.holds[slot] != hd {
+			r.mu.Unlock()
+			return // released by the button, a profile change or exit
+		}
+		if !vksDown(vks) {
+			delete(r.holds, slot)
+			r.mu.Unlock()
+			dbg("кнопка %d: удержание снято — отпущено вручную, в Windows: %s", slot+1, dbgState())
+			r.wake()
+			return
+		}
+		r.mu.Unlock()
+	}
+}
+
+// releaseLeftovers: at start, let go of mouse buttons and modifier keys that
+// Windows still reports down — e.g. left by a previous run that was killed
+// while it held them (a forced end cannot release anything).
+func releaseLeftovers() {
+	var done []string
+	for _, b := range []string{"left", "right", "middle", "back", "forward"} {
+		if vksDown([]uint16{mouseVK[b]}) {
+			sendMouseButton(b, true)
+			done = append(done, b)
+		}
+	}
+	for _, k := range []keyDef{{Name: "LShift", VK: 0xA0}, {Name: "RShift", VK: 0xA1}, {Name: "LCtrl", VK: 0xA2},
+		{Name: "RCtrl", VK: 0xA3, Ext: true}, {Name: "LAlt", VK: 0xA4}, {Name: "RAlt", VK: 0xA5, Ext: true},
+		{Name: "LWin", VK: 0x5B, Ext: true}, {Name: "RWin", VK: 0x5C, Ext: true}} {
+		if vksDown([]uint16{k.VK}) {
+			releaseCombo(Combo{Keys: []keyDef{k}})
+			done = append(done, k.Name)
+		}
+	}
+	if len(done) > 0 {
+		logf("при запуске были зажаты и отпущены: %s", strings.Join(done, ", "))
+	}
 }
 
 // endChanged ends held actions and "until pressed again" macros of buttons
