@@ -20,13 +20,26 @@ func runUI(url string) {
 	if base == "" {
 		base = os.TempDir()
 	}
-	_, _, scale := monitorUnderCursor()
+	work, _, scale := monitorUnderCursor()
+	// minimum width: the profile bar (profile, four section tabs, revert,
+	// write) fits on one line at 1160 px; on a smaller screen at most 90% of
+	// its width (the inactive tabs then keep only their icons)
+	minW := int(1160 * scale)
+	workW := int(work.Right - work.Left)
+	if lim := workW * 9 / 10; lim > 0 && minW > lim {
+		minW = lim
+	}
+	startW := int(1200 * scale)
+	if workW > 0 && startW > workW {
+		startW = workW
+	}
+	startW = max(startW, minW)
 	w := webview2.NewWithOptions(webview2.WebViewOptions{
 		DataPath:  filepath.Join(base, "SM809Control", "WebView2"),
 		AutoFocus: true,
 		WindowOptions: webview2.WindowOptions{
 			Title:  uiTitle,
-			Width:  uint(1200 * scale),
+			Width:  uint(startW),
 			Height: uint(840 * scale),
 			Center: true,
 			IconId: 1,
@@ -37,8 +50,8 @@ func runUI(url string) {
 	}
 	defer w.Destroy()
 	darkTitleBar(uintptr(w.Window()))
-	w.SetSize(int(900*scale), int(620*scale), webview2.HintMin)
-	trackWindowState(uintptr(w.Window()), int32(900*scale), int32(620*scale))
+	w.SetSize(minW, int(620*scale), webview2.HintMin)
+	trackWindowState(uintptr(w.Window()), int32(minW), int32(620*scale))
 	// file picker for "start a program": the dialog runs on its own thread
 	// (a modal loop inside a WebView2 event handler is not allowed) and is
 	// owned by this window, so it opens on top of it.

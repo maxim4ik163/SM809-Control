@@ -73,7 +73,7 @@ header {
 
 .layout { flex: 1; display: flex; min-height: 0; }
 nav {
-  width: 200px; background: var(--panel); border-right: 1px solid var(--line);
+  width: 188px; background: var(--panel); border-right: 1px solid var(--line);
   display: flex; flex-direction: column; padding: 10px 8px; gap: 2px;
 }
 nav button { text-align: left; background: none; border: none; padding: 10px 12px; border-radius: 8px; color: var(--muted); }
@@ -350,3 +350,16 @@ button.small.icon { line-height: 1; padding: 2px 7px; }
 .popmenu button.danger { color: var(--err); }
 .popmenu .sep { height: 1px; background: var(--line); margin: 4px 2px; }
 .bitem.pinned .l { opacity: .7; font-style: italic; }
+
+/* profile bar: profile select, section tabs, revert, write */
+.editbar:has(.ptabs) { padding: 0 16px; gap: 8px; }
+.editbar #ebSel { max-width: 170px; text-overflow: ellipsis; font-weight: 600; margin: 9px 0; }
+.ptabs { display: flex; gap: 2px; align-self: stretch; }
+.ptabs button { display: flex; align-items: center; gap: 6px; white-space: nowrap; background: none; border: none; border-radius: 0; padding: 13px 9px 11px; color: var(--muted); border-bottom: 2px solid transparent; }
+.ptabs button:hover { color: var(--text); }
+.ptabs button.on { color: var(--text); border-bottom-color: var(--accent); }
+.ptabs .pdot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); }
+.ptabs .pdot.pend { background: transparent; border: 1.5px solid var(--accent); width: 6px; height: 6px; }
+.editbar button.ebrev { line-height: 0; padding: 7px 9px; border-color: var(--line); background: var(--panel2); color: var(--text); }
+/* a window narrower than the minimum (small screen): inactive tabs keep only the icon */
+@media (max-width: 1139px) { .ptabs button:not(.on) .pl { display: none; } }

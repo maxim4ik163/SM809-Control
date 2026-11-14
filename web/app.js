@@ -245,29 +245,52 @@ function showLastMessage() {
 
 const PROFILE_TABS = ['buttons', 'dpi', 'light', 'perf'];
 
+// Profile sections: fields of the profile and mouse command groups of each tab
+// (a dot on a tab = unsaved changes there, or saved but not written yet).
+const SECTION_FIELDS = {
+  buttons: ['buttons', 'soft', 'pinned'],
+  dpi: ['dpiCount', 'dpiLevels', 'dpiColors', 'dpiStart'],
+  light: ['lighting', 'lightOff', 'sideOff', 'wheelOff', 'logoOff', 'logoColor'],
+  perf: ['pollRate', 'lod', 'sleepMin', 'moveWakeup', 'moveLightOff', 'angleSnap', 'motionSync', 'ripple'],
+};
+const SECTION_CMDS = { keys: 'buttons', dpi: 'dpi', dpiColors: 'dpi', light: 'light', zones: 'light', poll: 'perf', lod: 'perf', power: 'perf', sensor: 'perf' };
+function sectionChanged(sec) {
+  const saved = profileById(editId);
+  if (!dirty || !saved || !draft) return false;
+  return SECTION_FIELDS[sec].some(k => JSON.stringify(draft[k]) !== JSON.stringify(saved[k]));
+}
+
 function renderEditbar() {
   const bar = $('#editbar');
   if (tab === 'settings') return settingsBar(bar);
   if (!PROFILE_TABS.includes(tab)) { bar.style.display = 'none'; bar.dataset.h = ''; return; }
   bar.style.display = '';
+  store.set('ptab', tab);
   const s = st();
   const isCur = editId === s.current;
-  const pend = isCur && !dirty ? (s.pendingChanges || []) : [];
-  let h = `<span class="muted">${L('Профиль', 'Profile')}</span><select id="ebSel">${profileOptions(editId, p => (p.id === s.current ? L('  ● в мыши', '  ● on the mouse') : '') + (isSoftMode() && p.id === softStat().profile && p.id !== s.current ? L('  ● кнопки сейчас', '  ● buttons now') : ''))}</select>`;
+  const pend = isCur && !dirty && s.synced ? (s.pendingChanges || []) : [];
+  const pendSec = new Set(pend.map(k => SECTION_CMDS[k]).filter(Boolean));
+  const cur = profileById(editId);
+  let h = `<select id="ebSel" title="${esc(L('Профиль', 'Profile') + ': ' + (cur ? cur.name : ''))}">${profileOptions(editId, p => (p.id === s.current ? L('  ● в мыши', '  ● on the mouse') : '') + (isSoftMode() && p.id === softStat().profile && p.id !== s.current ? L('  ● кнопки сейчас', '  ● buttons now') : ''))}</select>`;
+  h += `<div class="ptabs" role="tablist" aria-label="${L('Разделы профиля', 'Profile sections')}">` + SECTIONS().map(([k, t]) => {
+    const ch = sectionChanged(k), pn = pendSec.has(k);
+    const name = { buttons: L('Кнопки', 'Buttons'), dpi: 'DPI', light: L('Подсветка', 'Lighting'), perf: L('Производительность', 'Performance') }[k];
+    const hint = ch ? L(' — есть несохранённые изменения', ' — unsaved changes') : pn ? L(' — сохранено, но ещё не записано в мышь', ' — saved but not written to the mouse yet') : '';
+    return `<button role="tab" aria-selected="${k === tab}" data-ptab="${k}" class="${k === tab ? 'on' : ''}" title="${esc(t + hint)}">${secIcon(k)}<span class="pl">${name}</span>${ch ? '<i class="pdot"></i>' : pn ? '<i class="pdot pend"></i>' : ''}</button>`;
+  }).join('') + '</div>';
   h += '<span class="grow"></span>';
-  if (dirty) h += `<span class="dirty">● ${L('есть несохранённые изменения', 'unsaved changes')}</span>`;
-  else if (pend.length && s.synced) h += `<span class="pend">${L('Не записано в мышь', 'Not written to the mouse')}: ${pend.map(cmdName).join(', ')}</span>`;
-  h += `<button id="ebRevert" ${dirty ? '' : 'disabled'}>${L('Отменить', 'Revert')}</button>`;
+  h += `<button class="icon ebrev" id="ebRevert" ${dirty ? '' : 'disabled'} title="${L('Отменить несохранённые изменения', 'Revert unsaved changes')}" aria-label="${L('Отменить несохранённые изменения', 'Revert unsaved changes')}"><svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4v3.5h3.5"/><path d="M3.4 7.2A5 5 0 1 1 4.6 11.6"/></svg></button>`;
   if (isCur) {
-    const can = (dirty || (pend.length && s.synced)) && !s.busy;
-    h += `<button class="primary" id="ebSave" ${can ? '' : 'disabled'}>${dirty ? L('Сохранить и записать в мышь', 'Save and write to the mouse') : L('Записать в мышь', 'Write to the mouse')}</button>`;
+    const can = (dirty || pend.length) && !s.busy;
+    h += `<button class="primary" id="ebSave" ${can ? '' : 'disabled'} title="${dirty ? L('Сохранить профиль и записать отличия в мышь', 'Save the profile and write the differences to the mouse') : pend.length ? L('Не записано в мышь: ', 'Not written to the mouse: ') + pend.map(cmdName).join(', ') : L('Всё уже записано в мышь', 'Everything is on the mouse already')}">${L('Записать в мышь', 'Write to mouse')}</button>`;
   } else {
-    h += `<button class="primary" id="ebSave" ${dirty ? '' : 'disabled'}>${L('Сохранить', 'Save')}</button>`;
-    h += `<button id="ebUse" ${s.busy ? 'disabled' : ''}>${L('Включить этот профиль', 'Use this profile')}</button>`;
+    h += `<button class="primary" id="ebSave" ${dirty ? '' : 'disabled'} title="${L('Сохранить профиль (он не в мыши — в мышь ничего не записывается)', 'Save the profile (it is not on the mouse — nothing is written)')}">${L('Сохранить', 'Save')}</button>`;
+    h += `<button id="ebUse" ${s.busy ? 'disabled' : ''} title="${L('Включить этот профиль — записать его в мышь', 'Use this profile — write it to the mouse')}">${L('Включить', 'Use')}</button>`;
   }
   if (bar.dataset.h === h) return;
   bar.dataset.h = h;
   bar.innerHTML = h;
+  bar.querySelectorAll('[data-ptab]').forEach(b => b.onclick = () => { if (tab !== b.dataset.ptab) { tab = b.dataset.ptab; store.set('tab', tab); renderAll(); } });
   $('#ebSel').onchange = async e => {
     if (dirty && !await discardChanges()) { e.target.value = editId; return; }
     editId = e.target.value; draft = clone(profileById(editId)); dirty = false; renderAll();
@@ -370,16 +393,21 @@ function touch() { dirty = true; renderEditbar(); }
 // ---------------------------------------------------------------------------
 // tabs
 
+// the four profile sections share one menu item; their tabs are in the profile bar
 const TABS = [
-  ['buttons', 'Кнопки', 'Buttons'], ['dpi', 'DPI', 'DPI'], ['light', 'Подсветка', 'Lighting'],
-  ['perf', 'Производительность', 'Performance'], ['macros', 'Макросы', 'Macros'],
+  ['profile', 'Профиль', 'Profile'], ['macros', 'Макросы', 'Macros'],
   ['profiles', 'Профили и игры', 'Profiles & games'], ['battery', 'Батарея', 'Battery'], ['settings', 'Настройки', 'Settings'],
 ];
 
 function renderNav() {
   const nav = $('#tabs');
-  nav.innerHTML = TABS.map(([id, ru, en]) => `<button data-tab="${id}" class="${id === tab ? 'on' : ''}">${L(ru, en)}</button>`).join('') + '<div class="navfoot" id="navfoot"></div>';
-  nav.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { tab = b.dataset.tab; store.set('tab', tab); renderAll(); });
+  const on = id => id === tab || (id === 'profile' && PROFILE_TABS.includes(tab));
+  nav.innerHTML = TABS.map(([id, ru, en]) => `<button data-tab="${id}" class="${on(id) ? 'on' : ''}">${L(ru, en)}</button>`).join('') + '<div class="navfoot" id="navfoot"></div>';
+  nav.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => {
+    let t = b.dataset.tab;
+    if (t === 'profile') { if (PROFILE_TABS.includes(tab)) return; t = store.get('ptab', 'buttons'); if (!PROFILE_TABS.includes(t)) t = 'buttons'; }
+    tab = t; store.set('tab', tab); renderAll();
+  });
 }
 
 function renderAll() {

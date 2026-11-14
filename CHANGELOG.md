@@ -14,6 +14,7 @@ Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/re
 - **Search in key lists** (key combination, software key, macro editor): type “f13” and press Enter.
 - **Settings, reorganised.** *Switch profiles by games* is now *Switch the mouse settings when a game starts* in the *Buttons and profiles* card, with a description of what it really does (software buttons follow the active window regardless). The *Mouse* card is split into Writing / Reading / Diagnostics. More compact layout: two balanced columns, language next to the version, the popup look and long explanations folded away.
 - Buttons in card headers are aligned to the right again (the spacer style only worked in the top bar).
+- **One *Profile* item in the menu** instead of Buttons, DPI, Lighting and Performance: those are now tabs in the profile bar, next to the profile list. A dot on a tab shows unsaved changes there (an outlined one: saved but not written to the mouse yet); *Revert* became an icon. The window is at least 1160 px wide so the bar fits on one line (at most 90% of a smaller screen; there the inactive tabs keep only their icons).
 
 **Русский**
 
@@ -25,6 +26,7 @@ Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/re
 - **Поиск в списках клавиш** (сочетание, программная клавиша, редактор макроса): набрать «f13» и нажать Enter.
 - **Настройки упорядочены.** «Переключение профилей по играм» теперь «Переключать настройки в мыши по запуску игр» в карточке «Кнопки и профили», с описанием того, что она делает на самом деле (программные кнопки следуют за активным окном в любом случае). Карточка «Мышь» разделена на «Запись», «Чтение», «Диагностика». Вёрстка компактнее: две выровненные колонки, язык рядом с версией, внешний вид всплывающих окон и длинные пояснения свёрнуты.
 - Кнопки в заголовках карточек снова прижаты вправо (стиль распорки работал только в верхней панели).
+- **Один пункт «Профиль» в меню** вместо «Кнопки», «DPI», «Подсветка» и «Производительность»: теперь это вкладки в строке профиля, рядом со списком профилей. Точка на вкладке — в этом разделе есть несохранённые изменения (контурная — сохранено, но ещё не записано в мышь); «Отменить» стала значком. Окно не уже 1160 px, чтобы строка помещалась целиком (на маленьком экране — не больше 90% его ширины, тогда у неактивных вкладок остаются только значки).
 
 ## 2.3.0 — 2026-11-09
 
