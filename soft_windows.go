@@ -293,6 +293,7 @@ func (r *softRuntime) post(msg uint32) {
 // run starts the hook thread, the worker and the foreground fallback timer.
 func (r *softRuntime) run() {
 	ready := make(chan struct{})
+	go dbgRun()
 	go func() {
 		runtime.LockOSThread()
 		defer runtime.UnlockOSThread()
@@ -402,7 +403,9 @@ func (r *softRuntime) anySwallowed() bool {
 func (r *softRuntime) kbdProc(code int, wp, lp uintptr) uintptr {
 	if code == 0 {
 		k := *(**KBDLLHOOKSTRUCT)(unsafe.Pointer(&lp)) // lParam points to the hook struct
-		if hookEventKind(k.VkCode, k.Flags&LLKHF_INJECTED != 0, k.ExtraInfo) == hookKeyboard && r.decide(k) {
+		sw := hookEventKind(k.VkCode, k.Flags&LLKHF_INJECTED != 0, k.ExtraInfo) == hookKeyboard && r.decide(k)
+		dbgHookKey(k, sw)
+		if sw {
 			return 1
 		}
 	}
@@ -462,6 +465,13 @@ func (r *softRuntime) handle(ev softEvent) {
 	defer r.wake() // after the unlock below (deferred calls run in reverse)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if debugInput {
+		dir := "отпущена"
+		if ev.down {
+			dir = "нажата"
+		}
+		dbg("кнопка %d %s (%s), в Windows: %s", ev.slot+1, dir, r.fgExe, dbgState())
+	}
 	if !ev.down {
 		h := r.held[ev.slot]
 		if h == nil {
@@ -490,9 +500,11 @@ func (r *softRuntime) handle(ev softEvent) {
 	if hd := r.holds[ev.slot]; hd != nil {
 		r.held[ev.slot] = &softHeld{out: SoftOut{Kind: SoftDisable}}
 		if !hd.unchecked && !vksDown(holdVKs(hd.out)) {
+			dbg("кнопка %d: удержание уже снято — зажимаю снова", ev.slot+1)
 			holdPress(hd.out)
 			return
 		}
+		dbg("кнопка %d: отпускаю удержание (unchecked=%v)", ev.slot+1, hd.unchecked)
 		holdRelease(hd.out)
 		delete(r.holds, ev.slot)
 		return
@@ -525,6 +537,7 @@ func (r *softRuntime) handle(ev softEvent) {
 		hd := &softHold{out: out}
 		r.holds[ev.slot] = hd
 		r.held[ev.slot] = &softHeld{out: SoftOut{Kind: SoftDisable}}
+		dbg("кнопка %d: удержание %s %s", ev.slot+1, out.Kind, out.Button+out.Combo.String())
 		holdPress(out)
 		go r.checkHold(ev.slot, hd)
 		return
@@ -593,6 +606,7 @@ func vksDown(vks []uint16) bool {
 func (r *softRuntime) checkHold(slot int, hd *softHold) {
 	time.Sleep(80 * time.Millisecond)
 	down := vksDown(holdVKs(hd.out))
+	dbg("кнопка %d: проверка удержания через 80 мс — %v, в Windows: %s", slot+1, down, dbgState())
 	r.mu.Lock()
 	if !down && r.holds[slot] == hd {
 		hd.unchecked = true
@@ -606,6 +620,7 @@ func (r *softRuntime) checkHold(slot int, hd *softHold) {
 func (r *softRuntime) endChanged(ch [softSlots]bool) (ended bool) {
 	for slot, hd := range r.holds {
 		if slot >= 0 && slot < softSlots && ch[slot] {
+			dbg("кнопка %d: удержание снято — сменилось действие", slot+1)
 			holdRelease(hd.out)
 			delete(r.holds, slot)
 			ended = true
