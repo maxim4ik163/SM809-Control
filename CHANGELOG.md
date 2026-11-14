@@ -15,6 +15,9 @@ Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/re
 - **Settings, reorganised.** *Switch profiles by games* is now *Switch the mouse settings when a game starts* in the *Buttons and profiles* card, with a description of what it really does (software buttons follow the active window regardless). The *Mouse* card is split into Writing / Reading / Diagnostics. More compact layout: two balanced columns, language next to the version, the popup look and long explanations folded away.
 - Buttons in card headers are aligned to the right again (the spacer style only worked in the top bar).
 - **One *Profile* item in the menu** instead of Buttons, DPI, Lighting and Performance: those are now tabs in the profile bar, next to the profile list. A dot on a tab shows unsaved changes there (an outlined one: saved but not written to the mouse yet); *Revert* became an icon. The window is at least 1160 px wide so the bar fits on one line (at most 90% of a smaller screen; there the inactive tabs keep only their icons).
+- **Key field with a drop-down list** (key combination, software key, macro editor): one field shows the key; typing filters the list, ↑/↓ and Enter or a click pick.
+- **Profile list in the profile bar** is the app's own: the name with a green dot when the profile is on the mouse (no longer cut off), and the full list by folder with “on the mouse”, “buttons now” and “main”.
+- **Error log `errors.log`**, written always, whatever the *Write a log* setting: errors of requests (what pops up at the bottom right), of writing the mouse, crashes with their place in the code and errors of the window. Messages only, never request data. *Settings → Application* shows the time of the last error and opens the log or its folder.
 
 **Русский**
 
@@ -27,6 +30,9 @@ Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/re
 - **Настройки упорядочены.** «Переключение профилей по играм» теперь «Переключать настройки в мыши по запуску игр» в карточке «Кнопки и профили», с описанием того, что она делает на самом деле (программные кнопки следуют за активным окном в любом случае). Карточка «Мышь» разделена на «Запись», «Чтение», «Диагностика». Вёрстка компактнее: две выровненные колонки, язык рядом с версией, внешний вид всплывающих окон и длинные пояснения свёрнуты.
 - Кнопки в заголовках карточек снова прижаты вправо (стиль распорки работал только в верхней панели).
 - **Один пункт «Профиль» в меню** вместо «Кнопки», «DPI», «Подсветка» и «Производительность»: теперь это вкладки в строке профиля, рядом со списком профилей. Точка на вкладке — в этом разделе есть несохранённые изменения (контурная — сохранено, но ещё не записано в мышь); «Отменить» стала значком. Окно не уже 1160 px, чтобы строка помещалась целиком (на маленьком экране — не больше 90% его ширины, тогда у неактивных вкладок остаются только значки).
+- **Поле клавиши с выпадающим списком** (сочетание, программная клавиша, редактор макроса): одно поле показывает клавишу; ввод фильтрует список, ↑/↓ и Enter или клик выбирают.
+- **Список профилей в строке профиля** теперь свой: имя и зелёная точка, если профиль в мыши (больше не обрезается), а в раскрытом виде — профили по папкам с пометками «в мыши», «кнопки сейчас», «основной».
+- **Журнал ошибок `errors.log`** пишется всегда, независимо от галочки «Вести журнал»: ошибки запросов (то, что всплывает внизу справа), записи в мышь, сбои с местом в коде и ошибки окна. Только сообщения, без данных запросов. В «Настройки → Программа» видно время последней ошибки и открываются журнал или его папка.
 
 ## 2.3.0 — 2026-11-09
 

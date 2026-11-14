@@ -13,6 +13,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -115,14 +116,29 @@ func (a *API) dispatch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	res, err := a.handle(path, body)
+	res, err := a.safeHandle(path, body)
 	if err != nil {
+		if path != "log/error" {
+			errlogf("%s: %v", path, err)
+		}
 		w.WriteHeader(400)
 		writeJSON(w, apiError{err.Error()})
 		return
 	}
 	writeJSON(w, res)
 	a.notify()
+}
+
+// safeHandle turns a panic in a request into an error (logged with its stack)
+// instead of a dead connection.
+func (a *API) safeHandle(path string, body json.RawMessage) (res any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			errLogPanic("запрос "+path, r)
+			res, err = nil, fmt.Errorf(T("внутренняя ошибка: %v (подробности в журнале ошибок)", "internal error: %v (details in the error log)"), r)
+		}
+	}()
+	return a.handle(path, body)
 }
 
 func (a *API) events(w http.ResponseWriter, r *http.Request) {
@@ -957,6 +973,43 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		}
 		a.uiCall(func() { shellOpen(out) })
 		return map[string]string{"dir": out}, nil
+
+	case "log/error": // an error in the window (JavaScript or a check in the page)
+		var req struct{ Msg, Where string }
+		if err := dec(&req); err != nil {
+			return nil, err
+		}
+		msg := req.Msg
+		if len(msg) > 4000 {
+			msg = msg[:4000] + "…"
+		}
+		errlogf("окно (%s): %s", req.Where, msg)
+		return map[string]bool{"ok": true}, nil
+
+	case "errlog": // when the last error was logged (0 = never)
+		var last int64
+		if t := lastError(); !t.IsZero() {
+			last = t.Unix()
+		}
+		return map[string]int64{"last": last}, nil
+
+	case "open-log": // open the error log or its folder
+		var req struct{ Which string }
+		if err := dec(&req); err != nil {
+			return nil, err
+		}
+		if errLogFile == "" {
+			return nil, errors.New(T("журнал ошибок недоступен", "the error log is not available"))
+		}
+		target := filepath.Dir(errLogFile)
+		if req.Which == "errors" {
+			if _, err := os.Stat(errLogFile); err != nil {
+				return nil, errors.New(T("ошибок пока не было — журнал пуст", "no errors so far — the log is empty"))
+			}
+			target = errLogFile
+		}
+		a.uiCall(func() { shellOpen(target) })
+		return map[string]bool{"ok": true}, nil
 
 	case "open-url":
 		var req struct {

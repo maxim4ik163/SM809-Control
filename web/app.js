@@ -25,7 +25,18 @@ async function api(path, body) {
   return j;
 }
 
-function toast(text, err) {
+// reportError: errors of the page go to errors.log (API errors are logged by
+// the app itself). At most 20 per session, so a loop cannot flood the log.
+let reported = 0;
+function reportError(msg, where) {
+  if (++reported > 20) return;
+  fetch('/api/log/error', { method: 'POST', headers: { 'X-Token': TOKEN, 'Content-Type': 'application/json' }, body: JSON.stringify({ msg: String(msg).slice(0, 4000), where: (where || '') + ' / ' + (typeof tab === 'string' ? tab : '') }) }).catch(() => {});
+}
+window.addEventListener('error', e => reportError((e.error && e.error.stack) || e.message, 'js'));
+window.addEventListener('unhandledrejection', e => reportError((e.reason && e.reason.stack) || e.reason, 'promise'));
+
+function toast(text, err, fromApi) {
+  if (err && !fromApi) reportError(text, 'сообщение');
   const d = document.createElement('div');
   d.textContent = text;
   if (err) d.className = 'err';
@@ -33,7 +44,7 @@ function toast(text, err) {
   setTimeout(() => d.remove(), err ? 6000 : 3500);
 }
 async function run(fn, okText) {
-  try { const r = await fn(); if (okText) toast(okText); return r; } catch (e) { toast(e.message, true); return undefined; }
+  try { const r = await fn(); if (okText) toast(okText); return r; } catch (e) { toast(e.message, true, true); return undefined; }
 }
 
 function modal(html, onMount) {
@@ -271,7 +282,8 @@ function renderEditbar() {
   const pend = isCur && !dirty && s.synced ? (s.pendingChanges || []) : [];
   const pendSec = new Set(pend.map(k => SECTION_CMDS[k]).filter(Boolean));
   const cur = profileById(editId);
-  let h = `<select id="ebSel" title="${esc(L('Профиль', 'Profile') + ': ' + (cur ? cur.name : ''))}">${profileOptions(editId, p => (p.id === s.current ? L('  ● в мыши', '  ● on the mouse') : '') + (isSoftMode() && p.id === softStat().profile && p.id !== s.current ? L('  ● кнопки сейчас', '  ● buttons now') : ''))}</select>`;
+  const onMouse = cur && cur.id === s.current;
+  let h = `<button id="ebSel" class="pbtn" aria-haspopup="listbox" title="${esc(L('Профиль', 'Profile') + ': ' + (cur ? cur.name : '') + (onMouse ? L(' — сейчас в мыши', ' — on the mouse now') : ''))}"><span class="pn">${esc(cur ? cur.name : '')}</span>${onMouse ? '<i class="mdot"></i>' : ''}<svg aria-hidden="true" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6l4 4 4-4"/></svg></button>`;
   h += `<div class="ptabs" role="tablist" aria-label="${L('Разделы профиля', 'Profile sections')}">` + SECTIONS().map(([k, t]) => {
     const ch = sectionChanged(k), pn = pendSec.has(k);
     const name = { buttons: L('Кнопки', 'Buttons'), dpi: 'DPI', light: L('Подсветка', 'Lighting'), perf: L('Производительность', 'Performance') }[k];
@@ -291,10 +303,7 @@ function renderEditbar() {
   bar.dataset.h = h;
   bar.innerHTML = h;
   bar.querySelectorAll('[data-ptab]').forEach(b => b.onclick = () => { if (tab !== b.dataset.ptab) { tab = b.dataset.ptab; store.set('tab', tab); renderAll(); } });
-  $('#ebSel').onchange = async e => {
-    if (dirty && !await discardChanges()) { e.target.value = editId; return; }
-    editId = e.target.value; draft = clone(profileById(editId)); dirty = false; renderAll();
-  };
+  $('#ebSel').onclick = e => profilePicker(e.currentTarget);
   $('#ebRevert').onclick = () => { draft = clone(profileById(editId)); dirty = false; renderAll(); };
   $('#ebSave').onclick = saveProfile;
   const u = $('#ebUse');
@@ -303,6 +312,33 @@ function renderEditbar() {
     await run(() => api('profile/apply', { id: editId, makeBase: true }), L('Профиль включён', 'Profile activated'));
     await reload();
   };
+}
+
+// profilePicker: the profile list of the profile bar, grouped by folder, with
+// the full marks (on the mouse, software buttons now, main).
+function profilePicker(anchor) {
+  const s = st(), main = S.data.settings.defaultProfile;
+  const go = async id => {
+    if (id === editId) return;
+    if (dirty && !await discardChanges()) return;
+    editId = id; draft = clone(profileById(id)); dirty = false; renderAll();
+  };
+  const item = p => {
+    const tags = [];
+    if (p.id === s.current) tags.push(`<span class="ok">● ${L('в мыши', 'on the mouse')}</span>`);
+    if (isSoftMode() && p.id === softStat().profile && p.id !== s.current) tags.push(`<span class="ok">● ${L('кнопки сейчас', 'buttons now')}</span>`);
+    if (p.id === main) tags.push('★ ' + L('основной', 'main'));
+    return { label: `<span class="pmn">${esc(p.name)}</span>${tags.length ? `<span class="pmt">${tags.join(' · ')}</span>` : ''}`, cur: p.id === editId, on: () => go(p.id) };
+  };
+  const ps = profiles(), gs = S.data.profileGroups || [], items = [];
+  for (const g of gs) {
+    const xs = ps.filter(p => sameGroup(p.group, g));
+    if (xs.length) { items.push({ head: true, label: g }); xs.forEach(p => items.push(item(p))); }
+  }
+  const loose = ps.filter(p => !p.group);
+  if (items.length && loose.length) items.push({ head: true, label: L('Без папки', 'No folder') });
+  loose.forEach(p => items.push(item(p)));
+  popMenu(anchor, items, 'left');
 }
 
 function settingsBar(bar) {
@@ -571,42 +607,93 @@ function keyOptions(withMouse) {
     + (withMouse ? `<optgroup label="${L('Мышь', 'Mouse')}">${MOUSE_KEYS.map(k => `<option value="${k}">${esc(keyName(k))}</option>`).join('')}</optgroup>` : '');
 }
 
-// keyFilter puts a search box in front of a key <select>: typing hides the keys
-// that do not match (and empty groups), Enter picks the exact match or the
-// first one left and fires "change". Nothing is assigned while typing.
-function keyFilter(sel) {
+// keyCombo turns a key <select> into one field with a drop-down list: it shows
+// the chosen key; typing filters the list (groups kept), ↑/↓ move, Enter or a
+// click picks, Esc closes without a change. The hidden <select> keeps the
+// value and still fires "change". sel._sync() refreshes the field after the
+// select was set from code.
+function keyCombo(sel) {
   if (!sel) return;
+  sel.hidden = true;
+  const wrap = document.createElement('span');
+  wrap.className = 'kcombo';
   const inp = document.createElement('input');
-  inp.type = 'search';
+  inp.type = 'text';
   inp.className = 'kfind';
-  inp.placeholder = L('🔍 поиск', '🔍 search');
-  sel.before(inp);
-  const opts = [...sel.querySelectorAll('option')].filter(o => o.value !== '' && o.value !== '0');
-  const filter = () => {
-    const q = inp.value.trim().toLowerCase();
-    let n = 0;
-    for (const o of opts) {
-      const ok = !q || o.textContent.toLowerCase().includes(q);
-      o.hidden = o.disabled = !ok;
-      if (ok) n++;
-    }
-    sel.querySelectorAll('optgroup').forEach(g => { g.hidden = ![...g.children].some(o => !o.hidden); });
-    inp.classList.toggle('bad', !!q && !n);
-    return q;
+  inp.setAttribute('role', 'combobox');
+  inp.setAttribute('aria-autocomplete', 'list');
+  inp.setAttribute('aria-expanded', 'false');
+  inp.setAttribute('aria-label', L('Клавиша', 'Key'));
+  inp.placeholder = L('клавиша — начните вводить', 'key — start typing');
+  const list = document.createElement('div');
+  list.className = 'klist';
+  list.setAttribute('role', 'listbox');
+  list.hidden = true;
+  wrap.append(inp, list);
+  sel.before(wrap);
+  const items = [];
+  for (const n of sel.children) {
+    if (n.tagName === 'OPTGROUP') { for (const o of n.children) items.push({ v: o.value, t: o.textContent, g: n.label }); }
+    else if (n.value !== '' && n.value !== '0') items.push({ v: n.value, t: n.textContent, g: '' });
+  }
+  const curText = () => { const o = sel.selectedOptions[0]; return o && o.value !== '' && o.value !== '0' ? o.textContent : ''; };
+  const hl = (t, q) => { const i = q ? t.toLowerCase().indexOf(q) : -1; return i < 0 ? esc(t) : esc(t.slice(0, i)) + '<b>' + esc(t.slice(i, i + q.length)) + '</b>' + esc(t.slice(i + q.length)); };
+  let shown = [], act = -1, open = false;
+  const mark = () => {
+    list.querySelectorAll('.ki').forEach(el => el.classList.toggle('on', +el.dataset.i === act));
+    const el = list.querySelector('.ki.on');
+    if (el) el.scrollIntoView({ block: 'nearest' });
   };
-  inp.oninput = filter;
-  inp.onkeydown = e => {
-    if (e.key === 'Escape' && inp.value) { e.stopPropagation(); inp.value = ''; filter(); return; }
-    if (e.key !== 'Enter') return;
-    e.preventDefault();
-    const q = filter();
-    if (!q) return;
-    const left = opts.filter(o => !o.hidden);
-    const pick = left.find(o => o.textContent.trim().toLowerCase() === q) || left[0];
-    if (!pick) return;
-    sel.value = pick.value;
+  const draw = raw => {
+    const q = raw.trim().toLowerCase();
+    shown = items.filter(it => !q || it.t.toLowerCase().includes(q));
+    const exact = shown.findIndex(it => it.t.toLowerCase() === q);
+    const cur = shown.findIndex(it => it.v === sel.value);
+    act = shown.length ? (exact >= 0 ? exact : q ? 0 : Math.max(cur, 0)) : -1;
+    let html = '', g = null;
+    shown.forEach((it, i) => {
+      if (it.g !== g) { g = it.g; if (g) html += `<div class="kg">${esc(g)}</div>`; }
+      html += `<div class="ki ${it.v === sel.value ? 'cur' : ''}" role="option" data-i="${i}">${hl(it.t, q)}</div>`;
+    });
+    list.innerHTML = html || `<div class="kg">${L('ничего не найдено', 'nothing found')}</div>`;
+    inp.classList.toggle('bad', !!q && !shown.length);
+    mark();
+  };
+  const openList = () => {
+    if (open) return;
+    open = true; list.hidden = false; inp.setAttribute('aria-expanded', 'true');
+    draw(inp.value === curText() ? '' : inp.value);
+  };
+  const close = restore => {
+    open = false; list.hidden = true; inp.setAttribute('aria-expanded', 'false');
+    if (restore) inp.value = curText();
+    inp.classList.remove('bad');
+  };
+  const pick = i => {
+    const it = shown[i];
+    if (!it) return;
+    sel.value = it.v; inp.value = it.t; close(false);
     sel.dispatchEvent(new Event('change'));
   };
+  inp.value = curText();
+  sel._sync = () => { inp.value = curText(); };
+  inp.onfocus = () => { inp.select(); openList(); };
+  inp.onclick = openList;
+  inp.oninput = () => { if (open) draw(inp.value); else openList(); };
+  inp.onkeydown = e => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!open) { openList(); return; }
+      if (shown.length) { act = (act + (e.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length; mark(); }
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (open) pick(act);
+    } else if (e.key === 'Escape') {
+      if (open) { e.stopPropagation(); close(true); inp.select(); }
+    } else if (e.key === 'Tab') close(true);
+  };
+  inp.onblur = () => setTimeout(() => { if (document.activeElement !== inp) close(true); }, 100);
+  list.onmousedown = e => { e.preventDefault(); const d = e.target.closest('[data-i]'); if (d) pick(+d.dataset.i); };
 }
 
 let lastMacroKey = 0; // the key list of the macro editor keeps the last key used
@@ -624,7 +711,7 @@ function comboEditor(body, b) {
   const upd = () => { body.querySelector('#cprev').textContent = comboLabel(mods, key); body.querySelector('#cap').textContent = capText(); };
   body.querySelectorAll('[data-m]').forEach(el => el.onchange = () => { mods = el.checked ? mods | +el.dataset.m : mods & ~+el.dataset.m; upd(); });
   const sel = body.querySelector('#ksel');
-  keyFilter(sel);
+  keyCombo(sel);
   if (key) sel.value = key;
   sel.onchange = () => { key = +sel.value; upd(); };
   const cap = body.querySelector('#cap');
@@ -638,7 +725,7 @@ function comboEditor(body, b) {
       window.removeEventListener('keydown', on, true);
       cap.classList.remove('listen');
       if (modBit && !key) { mods |= modBit; body.querySelectorAll('[data-m]').forEach(el => el.checked = !!(mods & +el.dataset.m)); }
-      else { key = c; sel.value = c; }
+      else { key = c; sel.value = c; if (sel._sync) sel._sync(); }
       upd();
     };
     window.addEventListener('keydown', on, true);
@@ -1037,7 +1124,7 @@ function renderMacroEditor(ed) {
 
   const mark = () => { mDirty = true; };
   const ak = ed.querySelector('#akey');
-  if (ak) { if (lastMacroKey) ak.value = lastMacroKey; keyFilter(ak); }
+  if (ak) { if (lastMacroKey) ak.value = lastMacroKey; keyCombo(ak); }
   ed.querySelector('#mname').oninput = e => { m.name = e.target.value; mark(); ed.querySelector('#msave').disabled = false; };
   ed.querySelector('#mgroup').onchange = async e => {
     let g = e.target.value;
@@ -1185,15 +1272,15 @@ const SECTIONS = () => [['buttons', L('Кнопки профиля', 'Profile bu
 const secIcon = k => `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round">${SEC_ICON[k]}</svg>`;
 
 // popMenu: a small menu under an anchor. items: [{label, on, disabled, danger, sep}]
-function popMenu(anchor, items) {
+function popMenu(anchor, items, align) {
   closePopMenu();
   const m = document.createElement('div');
   m.className = 'popmenu';
-  m.innerHTML = items.map((it, i) => it.sep ? '<div class="sep"></div>' : `<button data-i="${i}" class="${it.danger ? 'danger' : ''}" ${it.disabled ? 'disabled' : ''}>${it.label}</button>`).join('');
+  m.innerHTML = items.map((it, i) => it.sep ? '<div class="sep"></div>' : it.head ? `<div class="mh">${esc(it.label)}</div>` : `<button data-i="${i}" class="${it.danger ? 'danger' : ''} ${it.cur ? 'cur' : ''}" ${it.disabled ? 'disabled' : ''}>${it.label}</button>`).join('');
   document.body.appendChild(m);
   const r = anchor.getBoundingClientRect();
   m.style.top = Math.min(r.bottom + 4, innerHeight - m.offsetHeight - 8) + 'px';
-  m.style.left = Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.style.left = Math.max(8, Math.min(align === 'left' ? r.left : r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8)) + 'px';
   m.onclick = e => { const b = e.target.closest('[data-i]'); if (!b) return; closePopMenu(); items[+b.dataset.i].on(anchor); };
   setTimeout(() => document.addEventListener('mousedown', popAway, true));
   document.addEventListener('keydown', popEsc, true);
@@ -1719,7 +1806,9 @@ function viewSettings(v) {
       'The app runs as administrator, so autostart is created as the task "SM809Control" in Task Scheduler: the normal Windows autostart skips such programs.')}</p>`
     : S.autostartMode === 'task' ? `<p class="muted small">🛡 ${L('Автозапуск настроен через Планировщик заданий с правами администратора. Изменить его можно, только запустив программу от имени администратора.',
       'Autostart is set up as a Task Scheduler task with administrator rights. To change it, run the app as administrator.')}</p>` : ''}
-    ${chk('debug', L('Вести журнал', 'Write a log'), L('файл sm809control.log в %APPDATA%\\SM809Control', 'file sm809control.log in %APPDATA%\\SM809Control'))}</div>
+    ${chk('debug', L('Вести журнал', 'Write a log'), L('подробный журнал работы: файл sm809control.log в %APPDATA%\\SM809Control', 'a detailed log of what the app does: file sm809control.log in %APPDATA%\\SM809Control'))}
+    <div class="row sub0"><span class="small">${L('Журнал ошибок', 'Error log')}: <span id="errLast" class="muted">…</span></span><span class="grow"></span><button class="small" id="errOpen">${L('Открыть', 'Open')}</button><button class="small" id="logDir">${L('Папка с журналами', 'Log folder')}</button></div>
+    <p class="muted small">${L('Ошибки записываются в errors.log всегда, даже когда журнал выключен.', 'Errors always go to errors.log, even with the log turned off.')}</p></div>
 
   <div class="card"><h2>${L('Всплывающие окна', 'Popups')}</h2>
     ${chk('osdProfile', L('При смене профиля', 'On profile change'), L('для отдельных программ можно выключить во вкладке «Профили и игры»', 'can be turned off for individual programs on the Profiles & games tab'))}
@@ -1814,6 +1903,9 @@ function viewSettings(v) {
     f.value = '';
   };
   v.querySelector('#modeBtn').onclick = () => modeDialog(false);
+  api('errlog').then(r => { const el = v.querySelector('#errLast'); if (el) el.textContent = r.last ? L('последняя ошибка ', 'last error ') + fmtDate(r.last) : L('ошибок не было', 'no errors'); }).catch(() => {});
+  v.querySelector('#errOpen').onclick = () => run(() => api('open-log', { which: 'errors' }));
+  v.querySelector('#logDir').onclick = () => run(() => api('open-log', { which: 'folder' }));
   v.querySelector('#autosw').onchange = async e => {
     const on = e.target.checked;
     e.target.checked = !on;
@@ -2170,7 +2262,7 @@ function softKeysEditor(body, b, set) {
     mods = SOFT_MODS.filter(m => m === el.dataset.mod ? el.checked : mods.includes(m));
     apply();
   });
-  keyFilter(body.querySelector('#skey'));
+  keyCombo(body.querySelector('#skey'));
   body.querySelector('#skey').onchange = e => { key = e.target.value; apply(); };
   const cap = body.querySelector('#scap');
   cap.onclick = async () => {

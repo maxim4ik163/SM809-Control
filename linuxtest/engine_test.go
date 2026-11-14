@@ -773,3 +773,21 @@ func TestRulesAPIGroups(t *testing.T) {
 		t.Fatal(m, st.profile(def).Group)
 	}
 }
+
+func TestErrorLog(t *testing.T) {
+	st, e := setup(t)
+	errLogFile = filepath.Join(t.TempDir(), "errors.log")
+	defer func() { errLogFile = "" }()
+	a, _ := newAPI(e, st, func(f func()) { f() })
+	if c, _ := post(t, a, "profile/create", map[string]string{"name": " "}); c != 400 {
+		t.Fatal("expected an error")
+	}
+	post(t, a, "log/error", map[string]string{"msg": "TypeError: x is undefined", "where": "js"})
+	b, err := os.ReadFile(errLogFile)
+	if err != nil || !strings.Contains(string(b), "profile/create") || !strings.Contains(string(b), "TypeError") {
+		t.Fatalf("log: %v %q", err, b)
+	}
+	if lastError().IsZero() {
+		t.Fatal("last error time")
+	}
+}

@@ -338,7 +338,10 @@ func (e *Engine) nextSeq() byte {
 
 func (e *Engine) worker() {
 	for j := range e.jobs {
-		err := e.run(j)
+		err := e.runSafe(j)
+		if err != nil {
+			errlogf("запись в мышь (%s): %v", j.reason, err)
+		}
 		if j.done != nil {
 			j.done <- err
 		}
@@ -783,4 +786,17 @@ func (e *Engine) leftText() string {
 		return ""
 	}
 	return T(" Осталось ", " Left: ") + l + "."
+}
+
+// runSafe runs a job; a panic becomes an error (logged with its stack) so that
+// the writer keeps working.
+func (e *Engine) runSafe(j *applyJob) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			errLogPanic("запись в мышь", r)
+			e.setBusy(false, "")
+			err = fmt.Errorf("%v", r)
+		}
+	}()
+	return e.run(j)
 }

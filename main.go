@@ -416,6 +416,7 @@ func main() {
 
 	dir := appDataDir()
 	logFile = filepath.Join(dir, "sm809control.log")
+	errLogFile = filepath.Join(dir, "errors.log")
 	setLang(systemLanguage()) // used for defaults created on the very first run
 	store = loadStore(dir)
 	if l := store.data.Settings.Language; l == "ru" || l == "en" {
