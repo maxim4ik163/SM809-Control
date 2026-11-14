@@ -1,3 +1,5 @@
+//go:build windows
+
 package main
 
 // Error log: errors.log next to the settings, written always — whatever the
