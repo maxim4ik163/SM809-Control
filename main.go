@@ -100,7 +100,7 @@ func tooltipText() string {
 		if f.State == "charging" {
 			parts = append(parts, T("до полной ", "full in ")+fmtHours(f.Hours))
 		} else if f.State == "discharging" {
-			parts = append(parts, "≈ "+fmtHours(f.Hours))
+			parts = append(parts, f.leftLine())
 		}
 	}
 	parts = append(parts, modeName(p.Mode))

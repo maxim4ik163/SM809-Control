@@ -773,14 +773,14 @@ func (e *Engine) Snapshot() EngineSnapshot {
 	return s
 }
 
-// leftText: " Хватит примерно на 1 д 3 ч." when a forecast is available.
+// leftText: " Хватит примерно на 64 ч работы (~8 дней)." when a forecast is available.
 func (e *Engine) leftText() string {
 	if e.bat == nil {
 		return ""
 	}
-	f := e.bat.forecast(time.Now())
-	if f.State != "discharging" || f.Hours <= 0 {
+	l := e.bat.forecast(time.Now()).leftLine()
+	if l == "" {
 		return ""
 	}
-	return T(" Хватит примерно на ", " Roughly ") + fmtHours(f.Hours) + T(".", " left.")
+	return T(" Осталось ", " Left: ") + l + "."
 }

@@ -37,13 +37,20 @@ type BatSample struct {
 	Mode   string `json:"m,omitempty"`
 }
 
+// Discharge is measured against the time the mouse was connected (see
+// activeSecs), not calendar time: with the PC off at night or over a weekend
+// the mouse sleeps and hardly drains, and counting those hours made the
+// forecast jump several times up after every break. So Hours is hours of use;
+// Days converts it to calendar days with the average use per day.
 type BatForecast struct {
-	State      string  `json:"state"`      // discharging, charging, full, unknown
-	Hours      float64 `json:"hours"`      // hours left (to empty or to full); 0 = unknown
-	RatePerDay float64 `json:"ratePerDay"` // % per day (discharge) or per hour*24 (charge)
-	Basis      string  `json:"basis"`      // current, history, none
-	Since      int64   `json:"since"`      // start of the current discharge/charge session
-	LastFull   int64   `json:"lastFull"`   // last time the mouse was fully charged / unplugged at 100
+	State       string  `json:"state"`       // discharging, charging, full, unknown
+	Hours       float64 `json:"hours"`       // discharging: hours of use left; charging: hours to full; 0 = unknown
+	RatePerHour float64 `json:"ratePerHour"` // % per hour of use (discharge) or per hour (charge)
+	UsePerDay   float64 `json:"usePerDay"`   // hours connected per day over the last batUseWindow; 0 = too little history
+	Days        float64 `json:"days"`        // discharging: calendar days left at that routine; 0 = unknown
+	Basis       string  `json:"basis"`       // current, history, none
+	Since       int64   `json:"since"`       // start of the current discharge/charge session
+	LastFull    int64   `json:"lastFull"`    // last time the mouse was fully charged / unplugged at 100
 }
 
 type BatHistory struct {
@@ -63,6 +70,8 @@ const (
 	batRiseHold  = 30 * time.Minute // step against it (up on battery, down while charging)
 	batJump      = 20               // % taken at once (charged elsewhere, …)
 	batGap       = 35 * time.Minute // longer without samples = mouse was not connected
+	batUseWindow = 14 * 24 * time.Hour
+	batUseMin    = 3 * 24 * time.Hour // history needed before UsePerDay is trusted
 )
 
 // batSmoother turns the jittery 10 % steps of the firmware into a stable value.
@@ -291,6 +300,42 @@ func sessionStart(s []BatSample) int {
 	return i
 }
 
+// activeSecs returns how long the mouse was connected between from and to.
+// While connected a sample is stored at least every batHeartbeat, so the time
+// between two samples counts unless the gap exceeds batGap; after the last
+// sample the time up to `to` counts only within batGap (still connected).
+func activeSecs(s []BatSample, from, to int64) float64 {
+	gap := int64(batGap / time.Second)
+	over := func(a, b int64) int64 {
+		a, b = max(a, from), min(b, to)
+		return max(b-a, 0)
+	}
+	var tot int64
+	for i := 0; i+1 < len(s); i++ {
+		if d := s[i+1].T - s[i].T; d > 0 && d <= gap {
+			tot += over(s[i].T, s[i+1].T)
+		}
+	}
+	if n := len(s); n > 0 && to-s[n-1].T <= gap {
+		tot += over(s[n-1].T, to)
+	}
+	return float64(tot)
+}
+
+// usePerDay: average hours the mouse was connected per calendar day over the
+// last batUseWindow; 0 while the history is shorter than batUseMin.
+func usePerDay(s []BatSample, now int64) float64 {
+	if len(s) == 0 {
+		return 0
+	}
+	from := max(now-int64(batUseWindow/time.Second), s[0].T)
+	cal := float64(now - from)
+	if cal < batUseMin.Seconds() {
+		return 0
+	}
+	return activeSecs(s, from, now) / cal * 24
+}
+
 func batForecast(s []BatSample, now time.Time) BatForecast {
 	f := BatForecast{State: "unknown", Basis: "none"}
 	if len(s) == 0 {
@@ -305,20 +350,21 @@ func batForecast(s []BatSample, now time.Time) BatForecast {
 	last := s[len(s)-1]
 	st := sessionStart(s)
 	f.Since = s[st].T
-	nowS := float64(now.Unix())
+	nowS := now.Unix()
 
 	switch last.Charge {
 	case 2:
 		f.State = "full"
 		return f
 	case 1:
+		// charging also goes on with the PC off (USB charger), so calendar time
 		f.State = "charging"
 		first := s[st]
 		rise := float64(last.Pct - first.Pct)
 		span := float64(last.T - first.T)
 		if rise >= batMinDrop && span >= 600 {
 			perH := rise / (span / 3600)
-			f.RatePerDay = perH * 24
+			f.RatePerHour = perH
 			f.Hours = float64(100-last.Pct) / perH
 			f.Basis = "current"
 		}
@@ -326,7 +372,19 @@ func batForecast(s []BatSample, now time.Time) BatForecast {
 	}
 
 	f.State = "discharging"
-	// current session: from the highest point after unplugging to now
+	f.UsePerDay = usePerDay(s, nowS)
+	done := func(perH float64, basis string) BatForecast {
+		f.RatePerHour = perH
+		f.Hours = float64(last.Pct) / perH
+		f.Basis = basis
+		if f.UsePerDay > 0 {
+			f.Days = f.Hours / f.UsePerDay
+		}
+		return f
+	}
+	// current session: from the highest point after unplugging to now; the
+	// whole drop counts (a step that shows up after a break was mostly used up
+	// before it), the time only while connected
 	first := s[st]
 	for _, x := range s[st:] {
 		if x.Pct > first.Pct {
@@ -334,13 +392,9 @@ func batForecast(s []BatSample, now time.Time) BatForecast {
 		}
 	}
 	drop := float64(first.Pct - last.Pct)
-	span := nowS - float64(first.T)
+	span := activeSecs(s, first.T, nowS)
 	if drop >= batMinDrop && span >= batMinSpan {
-		perDay := drop / (span / 86400)
-		f.RatePerDay = perDay
-		f.Hours = float64(last.Pct) / perDay * 24
-		f.Basis = "current"
-		return f
+		return done(drop/(span/3600), "current")
 	}
 
 	// otherwise: average over earlier discharge sessions
@@ -358,7 +412,7 @@ func batForecast(s []BatSample, now time.Time) BatForecast {
 					hi = x
 				}
 			}
-			d, sp := float64(hi.Pct-lo.Pct), float64(lo.T-hi.T)
+			d, sp := float64(hi.Pct-lo.Pct), activeSecs(s[i:j+1], hi.T, lo.T)
 			if d >= batMinDrop && sp >= batMinSpan {
 				totDrop += d
 				totSpan += sp
@@ -367,12 +421,50 @@ func batForecast(s []BatSample, now time.Time) BatForecast {
 		i = j + 1
 	}
 	if totDrop > 0 && totSpan > 0 {
-		perDay := totDrop / (totSpan / 86400)
-		f.RatePerDay = perDay
-		f.Hours = float64(last.Pct) / perDay * 24
-		f.Basis = "history"
+		return done(totDrop/(totSpan/3600), "history")
 	}
 	return f
+}
+
+// fmtUse: hours of use, "64 ч", "40 мин" (never days: 48 h of use is not two days).
+func fmtUse(h float64) string {
+	if h >= 1 {
+		return fmt.Sprintf(T("%d ч", "%dh"), int(h+0.5))
+	}
+	return fmt.Sprintf(T("%d мин", "%d min"), int(h*60+0.5))
+}
+
+// fmtDays: "8 дней", "2 дня", "1 день".
+func fmtDays(d float64) string {
+	n := max(int(d+0.5), 1)
+	if !langRU.Load() {
+		if n == 1 {
+			return "1 day"
+		}
+		return fmt.Sprintf("%d days", n)
+	}
+	w := "дней"
+	if n%100 < 11 || n%100 > 14 {
+		switch n % 10 {
+		case 1:
+			w = "день"
+		case 2, 3, 4:
+			w = "дня"
+		}
+	}
+	return fmt.Sprintf("%d %s", n, w)
+}
+
+// leftLine: "≈ 64 ч работы (~8 дней)" for a discharge forecast, "" if none.
+func (f BatForecast) leftLine() string {
+	if f.State != "discharging" || f.Hours <= 0 {
+		return ""
+	}
+	t := "≈ " + fmtUse(f.Hours) + T(" работы", " of use")
+	if f.Days > 0 {
+		t += " (~" + fmtDays(f.Days) + ")"
+	}
+	return t
 }
 
 // fmtHours: "2 д 5 ч", "7 ч", "40 мин".

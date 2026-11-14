@@ -2,6 +2,16 @@
 
 Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/releases).
 
+## Unreleased
+
+**English**
+
+- **Battery forecast counts only the time the mouse is connected.** It used calendar time, so nights and weekends with the PC off (the mouse sleeps and hardly drains) made the forecast jump several times up after every break. *Time left* is now hours of use, with calendar days at your usual routine next to it (average time connected per day over the last two weeks, after 3 days of history). *Drain* is shown in % per hour of use.
+
+**Русский**
+
+- **Прогноз заряда учитывает только время, пока мышь на связи.** Раньше считалось календарное время, и ночи и выходные с выключенным ПК (мышь спит и почти не тратит заряд) после каждого перерыва завышали прогноз в разы. *Хватит примерно на* теперь показывает часы работы, а рядом — дни при вашем обычном режиме (среднее время на связи в сутки за последние две недели, после 3 дней истории). *Расход* — в % за час работы.
+
 ## 2.3.0 — 2026-11-09
 
 **English**

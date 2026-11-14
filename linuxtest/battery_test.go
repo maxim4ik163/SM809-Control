@@ -10,28 +10,48 @@ import (
 func TestBatteryForecast(t *testing.T) {
 	h := &BatHistory{path: t.TempDir() + "/b.json"}
 	t0 := time.Unix(1_700_000_000, 0)
-	// previous session: 100 → 60 over 4 days, then charge to full
-	for i := 0; i <= 40; i++ {
-		h.add(100-i, 0, "dongle", t0.Add(time.Duration(i)*144*time.Minute))
+	at := func(m int) time.Time { return t0.Add(time.Duration(m) * time.Minute) }
+	// connected from minute a to b, reports every minute, pct(m) as reported
+	run := func(a, b int, pct func(m int) int) {
+		for m := a; m <= b; m++ {
+			h.add(pct(m), 0, "dongle", at(m))
+		}
 	}
-	h.add(60, 1, "wired", t0.Add(97*time.Hour))
-	h.add(100, 2, "wired", t0.Add(99*time.Hour))
-	f := h.forecast(t0.Add(99 * time.Hour))
+	near := func(v, want, tol float64) bool { return v >= want-tol && v <= want+tol }
+	// previous session: 100 → 60 over 4 days of use (10%/day = 0.42%/h), then charge to full
+	run(0, 96*60, func(m int) int { return 100 - m/144 })
+	h.add(60, 1, "wired", at(97*60))
+	h.add(100, 2, "wired", at(99*60))
+	f := h.forecast(at(99 * 60))
 	if f.State != "full" || f.LastFull == 0 {
 		t.Fatalf("full %+v", f)
 	}
-	// unplugged at 100; only 1% dropped so far → uses history (10%/day)
-	h.add(100, 0, "dongle", t0.Add(100*time.Hour))
-	h.add(99, 0, "dongle", t0.Add(102*time.Hour))
-	f = h.forecast(t0.Add(102 * time.Hour))
-	if f.Basis != "history" || f.RatePerDay < 9.5 || f.RatePerDay > 10.5 || f.Hours < 230 || f.Hours > 245 {
+	// unplugged at 100; only 1% dropped so far → uses history
+	run(100*60, 102*60, func(m int) int { return 100 - (m-100*60)/120 })
+	f = h.forecast(at(102 * 60))
+	if f.Basis != "history" || !near(f.RatePerHour, 10.0/24, 0.02) || f.Hours < 230 || f.Hours > 245 {
 		t.Fatalf("history %+v", f)
 	}
-	// current session: 100 → 90 in 12 h → 20%/day, 90% left → 108 h
-	h.add(90, 0, "dongle", t0.Add(112*time.Hour))
-	f = h.forecast(t0.Add(112 * time.Hour))
-	if f.Basis != "current" || f.RatePerDay < 19.5 || f.RatePerDay > 20.5 || f.Hours < 105 || f.Hours > 110 {
+	// current session: 100 → 90 in 12 h of use → 0.83%/h, 90% left → 108 h
+	run(102*60+1, 112*60, func(m int) int { return 100 - (m-100*60)/72 })
+	f = h.forecast(at(112 * 60))
+	if f.Basis != "current" || !near(f.RatePerHour, 10.0/12, 0.02) || f.Hours < 105 || f.Hours > 110 {
 		t.Fatalf("current %+v", f)
+	}
+	// PC off for 60 h (no samples), then 2 h of use at 80%: 20% in 14 h of use
+	// → 1.43%/h, 80% left → 56 h. Calendar time (74 h) would give ~300 h.
+	run(172*60, 174*60, func(int) int { return 80 })
+	f = h.forecast(at(174 * 60))
+	if f.Basis != "current" || !near(f.RatePerHour, 20.0/14, 0.03) || f.Hours < 54 || f.Hours > 58 {
+		t.Fatalf("after a break %+v", f)
+	}
+	// the mouse is off now: the time since the last sample does not count
+	if g := h.forecast(at(190 * 60)); !near(g.RatePerHour, f.RatePerHour, 1e-9) {
+		t.Fatalf("disconnected now %+v vs %+v", g, f)
+	}
+	// connected 96+12+2 = 110 h in 174 h of history → 15.2 h a day
+	if !near(f.UsePerDay, 110.0/174*24, 0.1) || !near(f.Days, f.Hours/f.UsePerDay, 1e-9) {
+		t.Fatalf("use per day %+v", f)
 	}
 	// charging 20% per hour from 40
 	h.add(40, 1, "wired", t0.Add(200*time.Hour))
@@ -166,5 +186,24 @@ func TestSmoothHistory(t *testing.T) {
 	again := smoothBat(out)
 	if len(again) != len(out) {
 		t.Fatalf("not idempotent: %+v\n→ %+v", out, again)
+	}
+}
+
+func TestActiveSecs(t *testing.T) {
+	s := []BatSample{{T: 0}, {T: 1800}, {T: 3600}, {T: 3600 + 7200}, {T: 3600 + 7200 + 600}}
+	cases := []struct{ from, to, want int64 }{
+		{0, 3600, 3600},                      // two 30-min heartbeats
+		{0, 3600 + 7200, 3600},               // the 2-h gap does not count
+		{900, 11400, 2700 + 600},             // partial overlap
+		{0, 11400 + 1200, 3600 + 600 + 1200}, // still connected 20 min after the last sample
+		{0, 11400 + 3600, 3600 + 600},        // 1 h after the last sample: disconnected
+	}
+	for _, c := range cases {
+		if got := activeSecs(s, c.from, c.to); got != float64(c.want) {
+			t.Errorf("activeSecs(%d, %d) = %v, want %v", c.from, c.to, got, c.want)
+		}
+	}
+	if usePerDay(s, 11400) != 0 {
+		t.Error("usePerDay with less than 3 days of history")
 	}
 }

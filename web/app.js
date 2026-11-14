@@ -180,7 +180,7 @@ function renderTop() {
       h += ` <span class="bat"><i style="width:${Math.max(2, Math.round(d.battery * 0.21))}px;background:${d.battery <= 15 ? 'var(--err)' : d.battery <= 30 ? 'var(--warn)' : 'var(--accent)'}"></i></span> ${d.battery}%`;
       if (d.charge === 1) h += ' ⚡'; else if (d.charge === 2) h += ' ✓';
       const f = s.battery;
-      if (f && f.hours > 0) h += `<span class="muted"> · ${f.state === 'charging' ? L('до полной ', 'full in ') : '≈ '}${fmtHours(f.hours)}</span>`;
+      if (f && f.hours > 0) h += `<span class="muted" title="${f.state === 'charging' ? '' : L('часов работы мыши', 'hours of use')}"> · ${f.state === 'charging' ? L('до полной ', 'full in ') + fmtHours(f.hours) : '≈ ' + fmtUse(f.hours)}</span>`;
     } else if (!d.link) h += ' ' + L('нет связи', 'offline');
     h += '</span>';
   }
@@ -1206,6 +1206,16 @@ function fmtHours(h) {
   if (h >= 1) return L(`${Math.round(h)} ч`, `${Math.round(h)}h`);
   return L(`${Math.round(h * 60)} мин`, `${Math.round(h * 60)} min`);
 }
+// hours of use: never in days (48 h of use is not two days)
+function fmtUse(h) {
+  return h >= 1 ? L(`${Math.round(h)} ч`, `${Math.round(h)}h`) : L(`${Math.round(h * 60)} мин`, `${Math.round(h * 60)} min`);
+}
+function fmtDays(d) {
+  const n = Math.max(1, Math.round(d));
+  if (LANG !== 'ru') return n === 1 ? '1 day' : `${n} days`;
+  const m = n % 100, k = n % 10;
+  return `${n} ${m >= 11 && m <= 14 ? 'дней' : k === 1 ? 'день' : k >= 2 && k <= 4 ? 'дня' : 'дней'}`;
+}
 function fmtDate(t, withTime = true) {
   const d = new Date(t * 1000);
   return d.toLocaleString(LANG === 'ru' ? 'ru-RU' : 'en-GB', withTime ? { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' } : { day: 'numeric', month: 'short' });
@@ -1245,14 +1255,18 @@ function renderBatStats() {
   if (!p || !p.link) left = tile(L('Осталось', 'Time left'), '—', L('мышь не на связи', 'mouse not connected'));
   else if (f.state === 'full') left = tile(L('Осталось', 'Time left'), L('Заряжена', 'Charged'), L('отключите провод, чтобы начать отсчёт', 'unplug to start the countdown'));
   else if (f.state === 'charging') left = tile(L('До полной зарядки', 'Until full'), f.hours > 0 ? '≈ ' + fmtHours(f.hours) : '…', f.hours > 0 ? '' : L('мало данных, нужно хотя бы +3%', 'not enough data yet, needs +3%'));
-  else if (f.hours > 0) left = tile(L('Хватит примерно на', 'Roughly left'), fmtHours(f.hours),
-    f.basis === 'current' ? L('по расходу с момента отключения зарядки', 'based on use since the last charge') : L('по средним прошлым разрядам — уточнится после −3%', 'based on past discharges; refines after −3%'));
+  else if (f.hours > 0) left = tile(L('Хватит примерно на', 'Roughly left'), fmtUse(f.hours) + L(' работы', ' of use'),
+    (f.days > 0 ? L(`≈ ${fmtDays(f.days)} при вашем режиме; `, `≈ ${fmtDays(f.days)} at your usual routine; `) : '') +
+    (f.basis === 'current' ? L('по расходу с момента отключения зарядки', 'based on use since the last charge') : L('по средним прошлым разрядам — уточнится после −3%', 'based on past discharges; refines after −3%')));
   else left = tile(L('Осталось', 'Time left'), '…', L('собираю данные: нужно хотя бы −3% за час', 'collecting data: needs at least −3% over an hour'));
-  const rate = f.state === 'discharging' && f.ratePerDay > 0 ? `${f.ratePerDay.toFixed(f.ratePerDay < 10 ? 1 : 0)}% ${L('в сутки', 'per day')}` : '—';
+  const r = f.state === 'discharging' ? f.ratePerHour || 0 : 0;
+  const rate = r > 0 ? `${r.toFixed(r < 10 ? 1 : 0)}% ${L('в час', 'per hour')}` : '—';
+  const rateSub = r > 0 ? L('считается только время, пока мышь на связи', 'counting only the time the mouse is connected') +
+    (f.usePerDay > 0 ? L(`; на связи в среднем ${f.usePerDay.toFixed(1)} ч в сутки`, `; connected ${f.usePerDay.toFixed(1)} h a day on average`) : '') : '';
   box.innerHTML = `<div class="tiles">
     ${tile(L('Заряд', 'Charge'), p && p.link ? p.battery + '%' : '—', p && p.link ? ({ 1: L('заряжается', 'charging'), 2: L('заряжена', 'charged') }[p.charge] || L('от батареи', 'on battery')) : '')}
     ${left}
-    ${tile(L('Расход', 'Drain'), rate, '')}
+    ${tile(L('Расход', 'Drain'), rate, rateSub)}
     ${tile(L('Последняя полная зарядка', 'Last full charge'), f.lastFull ? fmtDate(f.lastFull) : '—', '')}</div>`;
 }
 
