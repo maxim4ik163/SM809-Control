@@ -200,7 +200,7 @@ func showMenu() {
 	snap := eng.Snapshot()
 	store.mu.Lock()
 	var ids []string
-	for i, p := range store.data.Profiles {
+	item := func(menu uintptr, i int, p *Profile) {
 		fl := uint32(MF_STRING)
 		if p.ID == snap.Base {
 			fl |= MF_CHECKED
@@ -209,8 +209,30 @@ func showMenu() {
 		if p.ID == snap.Active && p.ID != snap.Base {
 			name += T("  (активен по правилу)", "  (active by rule)")
 		}
-		add(sub, fl, cmdProfile0+i, name)
+		add(menu, fl, cmdProfile0+i, name)
+	}
+	for _, p := range store.data.Profiles {
 		ids = append(ids, p.ID)
+	}
+	// folders as submenus (in their order), then the profiles without a folder
+	for _, g := range store.data.ProfileGroups {
+		var gsub uintptr
+		for i, p := range store.data.Profiles {
+			if strings.EqualFold(p.Group, g) {
+				if gsub == 0 {
+					gsub, _, _ = pCreatePopupMenu.Call()
+				}
+				item(gsub, i, p)
+			}
+		}
+		if gsub != 0 {
+			pAppendMenuW.Call(sub, MF_POPUP, gsub, uintptr(unsafe.Pointer(u16(g))))
+		}
+	}
+	for i, p := range store.data.Profiles {
+		if p.Group == "" {
+			item(sub, i, p)
+		}
 	}
 	store.mu.Unlock()
 	pAppendMenuW.Call(m, MF_POPUP, sub, uintptr(unsafe.Pointer(u16(T("Профиль", "Profile")))))

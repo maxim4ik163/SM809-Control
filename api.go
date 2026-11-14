@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/rand"
 	"embed"
 	"encoding/hex"
@@ -460,7 +461,11 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		if !deviceHasLeft(&p, st.data.Settings) {
 			return nil, errors.New(T("хотя бы одна аппаратная кнопка должна оставаться левым кликом", "at least one hardware button must stay a left click"))
 		}
+		if p.ID == st.data.Settings.DefaultProfile {
+			go a.reapplyPins(true) // runs once this handler has released st.mu
+		}
 		if cur := st.profile(p.ID); cur != nil {
+			p.Group = cur.Group // folders change only through profile/move
 			*cur = p
 		} else {
 			if p.ID == "" {
@@ -468,12 +473,14 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 			}
 			st.data.Profiles = append(st.data.Profiles, &p)
 		}
+		profileFolders(st.data).sync()
 		return map[string]string{"id": p.ID}, st.saveData()
 
 	case "profile/create":
 		var req struct {
 			Name     string `json:"name"`
 			CopyFrom string `json:"copyFrom"`
+			Group    string `json:"group"`
 		}
 		if err := dec(&req); err != nil {
 			return nil, err
@@ -494,7 +501,9 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 			p = newProfile(req.Name, sensor)
 			fillSoft(p, st.data.Settings.HWButtons) // software buttons do what the defaults do
 		}
+		p.Group = normGroup(req.Group)
 		st.data.Profiles = append(st.data.Profiles, p)
+		profileFolders(st.data).sync()
 		return map[string]string{"id": p.ID}, st.saveData()
 
 	case "profile/delete":
@@ -535,6 +544,9 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		defer st.mu.Unlock()
 		if st.profile(req.ID) == nil {
 			return nil, errors.New(T("профиль не найден", "profile not found"))
+		}
+		if st.data.Settings.DefaultProfile != req.ID {
+			go a.reapplyPins(false)
 		}
 		st.data.Settings.DefaultProfile = req.ID
 		return map[string]bool{"ok": true}, st.saveData()
@@ -655,9 +667,24 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		st.data.Macros = keep
 		return map[string]bool{"ok": true}, st.saveData()
 
-	case "rules":
+	case "rules": // [rules…] or {"rules": […], "groups": […]}
+		var raw json.RawMessage
+		if err := dec(&raw); err != nil {
+			return nil, err
+		}
 		var rules []Rule
-		if err := dec(&rules); err != nil {
+		var groups []string
+		withGroups := false
+		if t := bytes.TrimSpace(raw); len(t) > 0 && t[0] == '{' {
+			var req struct {
+				Rules  []Rule   `json:"rules"`
+				Groups []string `json:"groups"`
+			}
+			if err := json.Unmarshal(t, &req); err != nil {
+				return nil, err
+			}
+			rules, groups, withGroups = req.Rules, req.Groups, true
+		} else if err := json.Unmarshal(t, &rules); err != nil {
 			return nil, err
 		}
 		st.mu.Lock()
@@ -682,7 +709,36 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 			clean = append(clean, r)
 		}
 		st.data.Rules = clean
+		if withGroups {
+			st.data.RuleGroups = groups
+		}
+		ruleFolders(st.data).sync()
 		return map[string]bool{"ok": true}, st.saveData()
+
+	case "profile/move": // put a profile into a folder ("" = none)
+		var req struct{ ID, Group string }
+		if err := dec(&req); err != nil {
+			return nil, err
+		}
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		if err := moveProfileTo(st.data, req.ID, req.Group); err != nil {
+			return nil, err
+		}
+		return map[string]string{"group": st.profile(req.ID).Group}, st.saveData()
+
+	case "profile/group": // profile folders: add, rename, delete (profiles are kept), up, down
+		var req struct{ Op, Name, To string }
+		if err := dec(&req); err != nil {
+			return nil, err
+		}
+		st.mu.Lock()
+		defer st.mu.Unlock()
+		name, err := profileFolders(st.data).op(req.Op, req.Name, req.To)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]string{"name": name}, st.saveData()
 
 	case "settings":
 		var req struct {
@@ -958,7 +1014,8 @@ func (a *API) handle(path string, body json.RawMessage) (any, error) {
 		}
 		// folders of the imported macros (an export also carries the folder order)
 		st.data.MacroGroups = append(st.data.MacroGroups, d.MacroGroups...)
-		syncMacroGroups(st.data)
+		st.data.ProfileGroups = append(st.data.ProfileGroups, d.ProfileGroups...)
+		syncFolders(st.data)
 		return map[string]int{"profiles": len(d.Profiles), "macros": len(d.Macros)}, st.saveData()
 	}
 	return nil, fmt.Errorf(T("неизвестный запрос %s", "unknown request %s"), path)
@@ -1054,4 +1111,24 @@ func (a *API) restore(b *fullBackup) (any, error) {
 		return nil, err1
 	}
 	return map[string]int{"profiles": len(b.Data.Profiles), "macros": len(b.Data.Macros), "battery": len(b.Battery)}, err2
+}
+
+// reapplyPins writes the key layout of the profile on the mouse again (only
+// if it changed) after the pinned buttons may have changed: the main profile
+// was saved (mainSaved; not when the main profile itself is on the mouse —
+// its own edits are written explicitly, as always) or another profile became
+// the main one.
+func (a *API) reapplyPins(mainSaved bool) {
+	st := a.store
+	st.mu.Lock()
+	synced, main := st.state.Synced, st.data.Settings.DefaultProfile
+	st.mu.Unlock()
+	if !synced {
+		return
+	}
+	on := a.eng.OnMouse()
+	if on == "" || (mainSaved && on == main) {
+		return
+	}
+	_ = a.eng.ApplyKeys(on, "фиксированные кнопки", false)
 }

@@ -165,7 +165,7 @@ func (e *Engine) handleReport(r statusReport) {
 				p.PollRate = ns.Rate
 			}
 			if ns.Light >= 0 && ns.Light < len(lightingModes) {
-				p.Lighting = ns.Light
+				p.setLightMode(ns.Light)
 			}
 			if ns.Sensor != 0 {
 				si := sensorFor(ns.Sensor)
@@ -320,7 +320,7 @@ func (e *Engine) diff(p *Profile) []string {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	var out []string
-	for _, c := range append(buildCommands(deviceProfile(p, st.data.Settings), st.macro, sensor, st.data.Settings.ZonesFW), deviceCommands(st.data.Settings)...) {
+	for _, c := range append(buildCommands(deviceProfile(st.pinned(p), st.data.Settings), st.macro, sensor, st.data.Settings.ZonesFW), deviceCommands(st.data.Settings)...) {
 		if !st.state.Synced || st.state.Sent[c.key] != signature(c) {
 			out = append(out, c.key)
 		}
@@ -500,7 +500,7 @@ func (e *Engine) run(j *applyJob) error {
 		st.mu.Unlock()
 		return errors.New(T("профиль не найден", "profile not found"))
 	}
-	pc := *p
+	pc := *st.pinned(p)
 	synced := st.state.Synced
 	devCmds := deviceCommands(st.data.Settings)
 	devSet := st.data.Settings

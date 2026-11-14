@@ -468,7 +468,7 @@ func (r *softRuntime) handle(ev softEvent) {
 	if p == nil {
 		p = st.profile(onMouse)
 	}
-	out, ok := softOutput(p, ev.slot, st.macro)
+	out, ok := softOutput(st.pinned(p), ev.slot, st.macro)
 	repeat := st.data.Settings.KeyRepeat
 	st.mu.Unlock()
 	r.last = softSlotName(ev.slot)

@@ -116,7 +116,7 @@ let dirty = false;
 let selBtn = 0;
 let btnCat = 'mouse';
 let mEditId = null, mDraft = null, mDirty = false, mSel = -1;
-let rulesDraft = null, rulesDirty = false;
+let rulesDraft = null, rulesDirty = false, ruleGroupsDraft = [];
 let setDraft = null, setDirty = false, autostartDraft = null;
 let dismissedErr = '';
 
@@ -132,7 +132,7 @@ async function reload() {
   if (!profileById(editId)) { editId = st().current || S.data.settings.baseProfile; dirty = false; }
   if (!dirty) draft = clone(profileById(editId));
   if (mEditId && !macroById(mEditId) && mEditId !== 'new') { mEditId = null; mDraft = null; mDirty = false; }
-  if (!rulesDirty) rulesDraft = clone(S.data.rules || []);
+  if (!rulesDirty) { rulesDraft = clone(S.data.rules || []); ruleGroupsDraft = clone(S.data.ruleGroups || []); }
   if (!setDirty) { setDraft = clone(S.data.settings); autostartDraft = S.autostart; }
   if (!softKeys) softKeys = await api('soft/keys').catch(() => []);
   if (!softLayouts.length) softLayouts = await api('soft/layouts').catch(() => []);
@@ -253,7 +253,7 @@ function renderEditbar() {
   const s = st();
   const isCur = editId === s.current;
   const pend = isCur && !dirty ? (s.pendingChanges || []) : [];
-  let h = `<span class="muted">${L('Профиль', 'Profile')}</span><select id="ebSel">${profiles().map(p => `<option value="${p.id}" ${p.id === editId ? 'selected' : ''}>${esc(p.name)}${p.id === s.current ? L('  ● в мыши', '  ● on the mouse') : ''}${isSoftMode() && p.id === softStat().profile && p.id !== s.current ? L('  ● кнопки сейчас', '  ● buttons now') : ''}</option>`).join('')}</select>`;
+  let h = `<span class="muted">${L('Профиль', 'Profile')}</span><select id="ebSel">${profileOptions(editId, p => (p.id === s.current ? L('  ● в мыши', '  ● on the mouse') : '') + (isSoftMode() && p.id === softStat().profile && p.id !== s.current ? L('  ● кнопки сейчас', '  ● buttons now') : ''))}</select>`;
   h += '<span class="grow"></span>';
   if (dirty) h += `<span class="dirty">● ${L('есть несохранённые изменения', 'unsaved changes')}</span>`;
   else if (pend.length && s.synced) h += `<span class="pend">${L('Не записано в мышь', 'Not written to the mouse')}: ${pend.map(cmdName).join(', ')}</span>`;
@@ -310,7 +310,7 @@ async function readFromMouse(btn) {
       : L(`Отличается от профиля ${esc(Q(r.compared))}: `, `Differs from profile ${esc(Q(r.compared))}: `) + r.differences.map(cmdName).join(', ') + '.'}</p>
     <div class="grid2" style="gap:12px"><div><table class="small">${btns}</table></div>
     <div class="small"><p><b>DPI:</b> ${p.dpiLevels.slice(0, p.dpiCount).map((d, i) => `<span style="color:${p.dpiColors[i]}">●</span> ${d}${i === p.dpiStart ? '*' : ''}`).join(' &nbsp;')}</p>
-      <p><b>${L('Подсветка', 'Lighting')}:</b> ${esc(nm(LIGHT_MODES[p.lighting] || ['?', '?']))}</p>
+      <p><b>${L('Подсветка', 'Lighting')}:</b> ${esc(lightText(p))}</p>
       <p><b>${L('Опрос', 'Polling')}:</b> ${pollLabel(p.pollRate)} · <b>LOD:</b> ${p.lod} ${L('мм', 'mm')}</p>
       <p><b>${L('Сон', 'Sleep')}:</b> ${p.sleepMin} ${L('мин', 'min')} · ${L('пробуждение движением', 'wake on move')}: ${p.moveWakeup ? '✓' : '—'} · ${L('гасить при движении', 'light off moving')}: ${p.moveLightOff ? '✓' : '—'}</p>
       <p><b>${L('Сенсор', 'Sensor')}:</b> angle snap ${p.angleSnap ? '✓' : '—'} · Motion Sync ${p.motionSync ? '✓' : '—'} · Ripple ${p.ripple ? '✓' : '—'}</p>
@@ -441,8 +441,8 @@ function viewButtons(v) {
   BUTTON_POS.forEach(([x, y], i) => {
     const soft = isSoftBtn(i);
     hs += `<div class="hot ${i === selBtn ? 'sel' : ''} ${i === LOCKED_BUTTON ? 'locked' : ''} ${soft ? 'soft' : ''} ${held.includes('b' + (i + 1)) ? 'held' : ''}" style="left:${x}px;top:${y}px" data-b="${i}" title="${L('Кнопка', 'Button')} ${i + 1}: ${esc(btnLabel(i))}"></div>`;
-    const badge = i === LOCKED_BUTTON ? '🔒' : '';
-    items[i] = `<div class="bitem ${i === selBtn ? 'sel' : ''} ${soft ? 'soft' : ''}" data-b="${i}" style="grid-area:b${i + 1}" title="${esc(btnLabel(i))}${sw ? ' — ' + (soft ? L('программная', 'software') : L('аппаратная', 'hardware')) : ''}"><span class="n">${i + 1}</span><span class="l">${esc(btnLabel(i))}</span>${badge ? `<span class="k">${badge}</span>` : ''}</div>`;
+    const badge = i === LOCKED_BUTTON ? '🔒' : pinnedHere(i) ? '📌' : '';
+    items[i] = `<div class="bitem ${i === selBtn ? 'sel' : ''} ${soft ? 'soft' : ''} ${pinnedFromMain(i) ? 'pinned' : ''}" data-b="${i}" style="grid-area:b${i + 1}" title="${esc(btnLabel(i))}${pinnedHere(i) ? L(' — зафиксирована в основном профиле', ' — pinned in the main profile') : ''}${sw ? ' — ' + (soft ? L('программная', 'software') : L('аппаратная', 'hardware')) : ''}"><span class="n">${i + 1}</span><span class="l">${esc(btnLabel(i))}</span>${badge ? `<span class="k">${badge}</span>` : ''}</div>`;
   });
   // laid out like the buttons on the mouse: the side panel 1–9, the top 10–16
   list = `<h3 class="bgh">${L('Боковые кнопки', 'Side buttons')}</h3><div class="bgrid side">${items.slice(0, 9).join('')}</div>
@@ -472,6 +472,22 @@ function renderButtonEditor(box) {
       'This is the main left button. Its function cannot be changed, so the mouse can never be left without a working click.')}</p>`;
     return;
   }
+  if (pinnedFromMain(i)) {
+    const m = mainProfile();
+    box.innerHTML = title + `<p>📌 ${L(`Кнопка зафиксирована в основном профиле ${esc(Q(m.name))} и во всех профилях делает одно и то же.`, `This button is pinned in the main profile ${esc(Q(m.name))} and does the same in every profile.`)}</p>
+      <p class="muted small">${L('Своё значение этой кнопки в текущем профиле сохраняется и вернётся, если снять фиксацию.', 'This profile keeps its own value for the button; it comes back when the pin is removed.')}</p>
+      <button id="toMain">${L('Изменить в основном профиле', 'Edit in the main profile')}</button>`;
+    box.querySelector('#toMain').onclick = async () => {
+      if (dirty && !await discardChanges()) return;
+      editId = m.id; draft = clone(m); dirty = false; renderAll();
+    };
+    return;
+  }
+  if (isMainDraft()) {
+    if (!draft.pinned) draft.pinned = Array(16).fill(false);
+    title += `<label class="check"><input type="checkbox" id="pinchk" ${draft.pinned[i] ? 'checked' : ''}><span>📌 ${L('Зафиксировать во всех профилях', 'Pin in every profile')}<small>${L('это основной профиль: кнопка будет делать то же самое в любом профиле; при переключении профилей её не нужно перезаписывать',
+      'this is the main profile: the button does the same in every profile and does not need rewriting on a profile switch')}</small></span></label>`;
+  }
   if (isSoftMode()) {
     const hw = S.data.settings.hwButtons[i];
     title += `<label class="check hwtoggle"><input type="checkbox" id="hwchk" ${hw ? 'checked' : ''}><span>${L('Аппаратная кнопка', 'Hardware button')}<small>${hw
@@ -485,6 +501,7 @@ function renderButtonEditor(box) {
   title += `<div class="row" style="margin:-4px 0 10px"><button class="small" id="bdef" ${isDef ? 'disabled' : ''} title="${L('Заводское назначение этой кнопки', 'The factory assignment of this button')}">↺ ${L('По умолчанию', 'Default')}: ${esc(soft ? softLabel(defS) : assignLabel(defB))}</button></div>`;
   const bindHW = () => {
     const c = box.querySelector('#hwchk'); if (c) c.onchange = () => toggleHW(i, c.checked);
+    const pc = box.querySelector('#pinchk'); if (pc) pc.onchange = () => { draft.pinned[i] = pc.checked; touch(); renderView(); };
     const d = box.querySelector('#bdef');
     if (d) d.onclick = () => {
       if (soft) { draft.soft[i] = clone(defS); touch(); renderView(); }
@@ -526,6 +543,46 @@ function keyOptions(withMouse) {
     + (withMouse ? `<optgroup label="${L('Мышь', 'Mouse')}">${MOUSE_KEYS.map(k => `<option value="${k}">${esc(keyName(k))}</option>`).join('')}</optgroup>` : '');
 }
 
+// keyFilter puts a search box in front of a key <select>: typing hides the keys
+// that do not match (and empty groups), Enter picks the exact match or the
+// first one left and fires "change". Nothing is assigned while typing.
+function keyFilter(sel) {
+  if (!sel) return;
+  const inp = document.createElement('input');
+  inp.type = 'search';
+  inp.className = 'kfind';
+  inp.placeholder = L('🔍 поиск', '🔍 search');
+  sel.before(inp);
+  const opts = [...sel.querySelectorAll('option')].filter(o => o.value !== '' && o.value !== '0');
+  const filter = () => {
+    const q = inp.value.trim().toLowerCase();
+    let n = 0;
+    for (const o of opts) {
+      const ok = !q || o.textContent.toLowerCase().includes(q);
+      o.hidden = o.disabled = !ok;
+      if (ok) n++;
+    }
+    sel.querySelectorAll('optgroup').forEach(g => { g.hidden = ![...g.children].some(o => !o.hidden); });
+    inp.classList.toggle('bad', !!q && !n);
+    return q;
+  };
+  inp.oninput = filter;
+  inp.onkeydown = e => {
+    if (e.key === 'Escape' && inp.value) { e.stopPropagation(); inp.value = ''; filter(); return; }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    const q = filter();
+    if (!q) return;
+    const left = opts.filter(o => !o.hidden);
+    const pick = left.find(o => o.textContent.trim().toLowerCase() === q) || left[0];
+    if (!pick) return;
+    sel.value = pick.value;
+    sel.dispatchEvent(new Event('change'));
+  };
+}
+
+let lastMacroKey = 0; // the key list of the macro editor keeps the last key used
+
 function comboEditor(body, b) {
   let mods = 0, key = 0;
   if (b.kind !== 'macro' && b.code[0] === 112) { mods = b.code[1]; key = b.code[2]; }
@@ -539,6 +596,7 @@ function comboEditor(body, b) {
   const upd = () => { body.querySelector('#cprev').textContent = comboLabel(mods, key); body.querySelector('#cap').textContent = capText(); };
   body.querySelectorAll('[data-m]').forEach(el => el.onchange = () => { mods = el.checked ? mods | +el.dataset.m : mods & ~+el.dataset.m; upd(); });
   const sel = body.querySelector('#ksel');
+  keyFilter(sel);
   if (key) sel.value = key;
   sel.onchange = () => { key = +sel.value; upd(); };
   const cap = body.querySelector('#cap');
@@ -770,29 +828,40 @@ function viewDPI(v) {
 // ---------------------------------------------------------------------------
 // Lighting
 
+// lightText: "off" or "side buttons: <mode>" (lighting is a profile).
+function lightText(p) {
+  return p.lightOff ? L('выключена', 'off') : L('боковые: ', 'side buttons: ') + nm(LIGHT_MODES[p.lighting] || ['?', '?']);
+}
+
 function viewLight(v) {
-  v.innerHTML = `<div class="card"><h2>${L('Подсветка', 'Lighting')}</h2><div class="lgrid">${LIGHT_MODES.map((n, i) =>
+  const off = !!draft.lightOff;
+  v.innerHTML = `<div class="card slim"><div class="zrow last"><span><b>${L('Вся подсветка', 'All lighting')}</b><small>${L('выключает все зоны сразу; выбранные ниже режимы сохраняются', 'turns off every zone at once; the modes chosen below are kept')}</small></span>
+      <div class="seg"><button data-off="0" class="${off ? '' : 'on'}">${L('Вкл', 'On')}</button><button data-off="1" class="${off ? 'on' : ''}">${L('Выкл', 'Off')}</button></div></div></div>
+    <div class="card ${off ? 'dim' : ''}"><h2>${L('Подсветка боковых кнопок', 'Side buttons lighting')}</h2>
+    ${off ? `<p class="small warn">${L('Вся подсветка выключена — режим можно выбрать заранее.', 'All lighting is off — you can still choose the mode in advance.')}</p>` : ''}
+    <div class="lgrid">${LIGHT_MODES.map((n, i) => i === 0 ? '' :
     `<div class="lmode ${draft.lighting === i ? 'on' : ''}" data-l="${i}"><div class="sw" style="background:${LIGHT_SWATCH[i] || '#444'}"></div>${esc(nm(n))}</div>`).join('')}</div>
     <p class="muted small">${L('Прошивка SM809 поддерживает только выбор режима: яркость, скорость и цвет эффектов не настраиваются.',
       'The SM809 firmware only supports choosing a mode: brightness, speed and effect colours cannot be changed.')}</p></div>
-    ${S.data.settings.zonesFw ? zonesCard() : ''}`;
+    ${S.data.settings.zonesFw ? zonesCard(off) : ''}`;
+  v.querySelectorAll('[data-off]').forEach(el => el.onclick = () => { draft.lightOff = el.dataset.off === '1'; touch(); renderView(); });
   v.querySelectorAll('[data-l]').forEach(el => el.onclick = () => { draft.lighting = +el.dataset.l; touch(); renderView(); });
+  if (off) return; // zones are inactive while all lighting is off
   v.querySelectorAll('[data-z]').forEach(el => el.onclick = () => { draft[el.dataset.z] = el.dataset.v === '1'; touch(); renderView(); });
   const lc = v.querySelector('#logoColor');
   if (lc) lc.onclick = () => openPalette(lc, draft.logoColor, c => { draft.logoColor = c; draft.logoOff = false; touch(); renderView(); });
 }
 
 // lighting zones — patched firmware only (Settings → Experimental options)
-function zonesCard() {
+function zonesCard(allOff) {
   const seg = (k, on, off) => `<div class="seg"><button data-z="${k}" data-v="0" class="${draft[k] ? '' : 'on'}">${on}</button><button data-z="${k}" data-v="1" class="${draft[k] ? 'on' : ''}">${off}</button></div>`;
-  const allOff = draft.lighting === 0;
-  return `<div class="card"><h2>${L('Зоны подсветки', 'Lighting zones')}</h2>
+  return `<div class="card ${allOff ? 'dim off' : ''}"><h2>${L('Зоны подсветки', 'Lighting zones')}</h2>
     <div class="zrow"><span>${L('Боковые кнопки', 'Side buttons')}<small>${L('режим выбирается выше', 'the mode is chosen above')}</small></span>${seg('sideOff', L('Вкл', 'On'), L('Выкл', 'Off'))}</div>
     <div class="zrow"><span>${L('Колесо (DPI)', 'Wheel (DPI)')}<small>${L('цвет текущего уровня DPI; мигание при критическом заряде остаётся', 'colour of the current DPI level; the critical battery blink stays')}</small></span>${seg('wheelOff', L('Вкл', 'On'), L('Выкл', 'Off'))}</div>
     <div class="zrow"><span>${L('Логотип', 'Logo')}<small>${L('постоянный цвет', 'a fixed colour')}</small></span>
       <div class="seg"><button data-z="logoOff" data-v="0" class="${draft.logoOff ? '' : 'on'}">${L('Цвет', 'Colour')}</button><button data-z="logoOff" data-v="1" class="${draft.logoOff ? 'on' : ''}">${L('Выкл', 'Off')}</button></div>
       ${swatch('id="logoColor"', draft.logoColor || '#ffffff')}</div>
-    ${allOff ? `<p class="warn small">${L('Режим подсветки «Выкл» гасит все зоны сразу.', 'Lighting mode “Off” turns off all zones at once.')}</p>` : ''}
+    ${allOff ? `<p class="warn small">${L('Вся подсветка выключена — зоны не действуют.', 'All lighting is off — the zones have no effect.')}</p>` : ''}
     <p class="muted small">${L('Работает только с пропатченной прошивкой SM809_Mouse_IAP_zones. Режим «Гасить подсветку при движении» и сон по-прежнему гасят все зоны.',
       'Works only with the patched firmware SM809_Mouse_IAP_zones. “Lighting off while moving” and sleep still turn off all zones.')}</p></div>`;
 }
@@ -939,6 +1008,8 @@ function renderMacroEditor(ed) {
       `Delay is the time before the action (up to ${MAX_DELAY} ms; up to 255 ms for cursor moves). The encoding matches the official driver.`)}</p></div>`;
 
   const mark = () => { mDirty = true; };
+  const ak = ed.querySelector('#akey');
+  if (ak) { if (lastMacroKey) ak.value = lastMacroKey; keyFilter(ak); }
   ed.querySelector('#mname').oninput = e => { m.name = e.target.value; mark(); ed.querySelector('#msave').disabled = false; };
   ed.querySelector('#mgroup').onchange = async e => {
     let g = e.target.value;
@@ -974,6 +1045,7 @@ function renderMacroEditor(ed) {
   };
   ed.querySelectorAll('[data-add]').forEach(el => el.onclick = () => {
     const k = +ed.querySelector('#akey').value;
+    lastMacroKey = k;
     switch (el.dataset.add) {
       case 'press': insert([{ type: 'keydown', code: k, delay: 30 }, { type: 'keyup', code: k, delay: 30 }]); break;
       case 'keydown': insert([{ type: 'keydown', code: k, delay: 30 }]); break;
@@ -1064,87 +1136,294 @@ function usedInCurrent(id) {
 // ---------------------------------------------------------------------------
 // Profiles & games
 
+// profileOptions: <option>s of all profiles, grouped by folder. label(p) adds text.
+function profileOptions(sel, label) {
+  const ps = profiles(), gs = S.data.profileGroups || [];
+  const opt = p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.name)}${label ? esc(label(p)) : ''}</option>`;
+  let h = gs.map(g => { const xs = ps.filter(p => sameGroup(p.group, g)); return xs.length ? `<optgroup label="${esc(g)}">${xs.map(opt).join('')}</optgroup>` : ''; }).join('');
+  const loose = ps.filter(p => !p.group);
+  h += h && loose.length ? `<optgroup label="${L('Без папки', 'No folder')}">${loose.map(opt).join('')}</optgroup>` : loose.map(opt).join('');
+  return h;
+}
+
+// small line icons for the profile sections
+const SEC_ICON = {
+  buttons: '<path d="M8 2.5h0a4.5 4.5 0 0 1 4.5 4.5v3a4.5 4.5 0 0 1-9 0V7A4.5 4.5 0 0 1 8 2.5zM8 2.5v4"/>',
+  dpi: '<circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="1.6"/><path d="M8 1v2.5M8 12.5V15M1 8h2.5M12.5 8H15"/>',
+  light: '<path d="M8 1.5a4.5 4.5 0 0 0-2.6 8.2c.5.4.8.9.8 1.5v.8h3.6v-.8c0-.6.3-1.1.8-1.5A4.5 4.5 0 0 0 8 1.5zM6.3 14.5h3.4"/>',
+  perf: '<path d="M9 1.5 3.5 9H8l-1 5.5L12.5 7H8z"/>',
+};
+const SECTIONS = () => [['buttons', L('Кнопки профиля', 'Profile buttons')], ['dpi', L('DPI профиля', 'Profile DPI')], ['light', L('Подсветка профиля', 'Profile lighting')], ['perf', L('Производительность профиля', 'Profile performance')]];
+const secIcon = k => `<svg viewBox="0 0 16 16" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" stroke-linecap="round">${SEC_ICON[k]}</svg>`;
+
+// popMenu: a small menu under an anchor. items: [{label, on, disabled, danger, sep}]
+function popMenu(anchor, items) {
+  closePopMenu();
+  const m = document.createElement('div');
+  m.className = 'popmenu';
+  m.innerHTML = items.map((it, i) => it.sep ? '<div class="sep"></div>' : `<button data-i="${i}" class="${it.danger ? 'danger' : ''}" ${it.disabled ? 'disabled' : ''}>${it.label}</button>`).join('');
+  document.body.appendChild(m);
+  const r = anchor.getBoundingClientRect();
+  m.style.top = Math.min(r.bottom + 4, innerHeight - m.offsetHeight - 8) + 'px';
+  m.style.left = Math.max(8, Math.min(r.right - m.offsetWidth, innerWidth - m.offsetWidth - 8)) + 'px';
+  m.onclick = e => { const b = e.target.closest('[data-i]'); if (!b) return; closePopMenu(); items[+b.dataset.i].on(anchor); };
+  setTimeout(() => document.addEventListener('mousedown', popAway, true));
+  document.addEventListener('keydown', popEsc, true);
+}
+function popAway(e) { if (!e.target.closest('.popmenu')) closePopMenu(); }
+function popEsc(e) { if (e.key === 'Escape') { e.stopPropagation(); closePopMenu(); } }
+function closePopMenu() {
+  document.querySelectorAll('.popmenu').forEach(m => m.remove());
+  document.removeEventListener('mousedown', popAway, true);
+  document.removeEventListener('keydown', popEsc, true);
+}
+
+// Folder lists of the Profiles & games tab. o = {key, groups, items: [{id,
+// group, html, text}], forceOpen(g), empty, onGroup(op, g), onMove(id, g),
+// wire(list)}. Rows carry data-fid; a row is dragged by its .grip.
+function mountFolderList(box, o) {
+  const search = o.items.length >= 8;
+  box.innerHTML = `${search ? `<input type="search" class="msearch" placeholder="${L('Поиск…', 'Search…')}" value="${esc(listQuery[o.key] || '')}">` : ''}<div class="flist"></div>`;
+  const list = box.querySelector('.flist');
+  const ck = 'fClosed.' + o.key;
+  const closed = () => new Set(store.get(ck, []));
+  const setClosed = (g, c) => { const s = closed(); if (c) s.add(g.toLowerCase()); else s.delete(g.toLowerCase()); store.set(ck, [...s]); };
+  const draw = () => {
+    const q = (listQuery[o.key] || '').trim().toLowerCase();
+    const hit = it => !q || it.text.toLowerCase().includes(q);
+    const cl = closed();
+    let html = '';
+    for (const g of o.groups) {
+      const all = o.items.filter(it => sameGroup(it.group, g));
+      const shown = q && g.toLowerCase().includes(q) ? all : all.filter(hit);
+      if (q && !shown.length) continue;
+      const open = q || !cl.has(g.toLowerCase()) || o.forceOpen(g);
+      html += `<div class="mgrp ${open ? 'open' : ''}" data-g="${esc(g)}" data-in="${esc(g)}"><span class="caret">${open ? '▾' : '▸'}</span><span class="gname">${esc(g)}</span><span class="cnt">${all.length}</span><span class="gact">
+        <button class="small" data-ga="new" title="${o.newTitle}">+</button><button class="small" data-ga="rename" title="${L('Переименовать', 'Rename')}">✎</button><button class="small" data-ga="up" title="${L('Выше', 'Up')}">↑</button><button class="small" data-ga="down" title="${L('Ниже', 'Down')}">↓</button><button class="small danger" data-ga="delete" title="${L('Удалить папку', 'Delete folder')}">✕</button></span></div>`;
+      if (open) html += `<div class="gitems">${shown.map(it => it.html).join('') || `<div class="gempty muted small">${L('Пусто — перетащите сюда за ⋮⋮', 'Empty — drag a row here by ⋮⋮')}</div>`}</div>`;
+    }
+    const loose = o.items.filter(it => !it.group);
+    if (o.groups.length && (loose.length || !q)) html += `<div class="mgrp open loose" data-in=""><span class="caret"></span><span class="gname">${L('Без папки', 'No folder')}</span><span class="cnt">${loose.length}</span></div>`;
+    html += loose.filter(hit).map(it => it.html).join('');
+    if (!html) html = `<div class="muted small" style="padding:10px">${q ? L('Ничего не найдено', 'Nothing found') : o.empty}</div>`;
+    list.innerHTML = html;
+    list.querySelectorAll('.mgrp[data-g]').forEach(el => el.onclick = e => {
+      if (e.target.closest('button') || q) return;
+      setClosed(el.dataset.g, el.classList.contains('open')); draw();
+    });
+    list.querySelectorAll('[data-ga]').forEach(el => el.onclick = () => {
+      const g = el.closest('.mgrp').dataset.g;
+      if (el.dataset.ga === 'rename') { /* keep the open/closed state under the new name */
+        const was = closed().has(g.toLowerCase());
+        o.onGroup('rename', g, to => { setClosed(g, false); if (to) setClosed(to, was); });
+        return;
+      }
+      if (el.dataset.ga === 'new') setClosed(g, false);
+      o.onGroup(el.dataset.ga, g);
+    });
+    list.querySelectorAll('.grip').forEach(el => {
+      el.draggable = true;
+      el.ondragstart = e => { e.dataTransfer.setData('text/x-row-' + o.key, el.closest('[data-fid]').dataset.fid); e.dataTransfer.effectAllowed = 'move'; };
+    });
+    list.querySelectorAll('[data-in]').forEach(el => {
+      el.ondragover = e => { if (e.dataTransfer.types.includes('text/x-row-' + o.key)) { e.preventDefault(); el.classList.add('drop'); } };
+      el.ondragleave = () => el.classList.remove('drop');
+      el.ondrop = e => {
+        e.preventDefault(); el.classList.remove('drop');
+        const id = e.dataTransfer.getData('text/x-row-' + o.key);
+        if (id !== '') { if (el.dataset.in) setClosed(el.dataset.in, false); o.onMove(id, el.dataset.in); }
+      };
+    });
+    o.wire(list);
+  };
+  const inp = box.querySelector('.msearch');
+  if (inp) inp.oninput = () => { listQuery[o.key] = inp.value; draw(); };
+  draw();
+}
+
+// newProfileDialog: name + "based on" (main profile by default, or factory settings).
+function newProfileDialog(group) {
+  const def = S.data.settings.defaultProfile;
+  modal(`<h2>${L('Новый профиль', 'New profile')}</h2>
+    <label class="field"><span>${L('Имя', 'Name')}</span><input type="text" id="npn" style="width:100%" value="${esc(L('Профиль ', 'Profile ') + (profiles().length + 1))}"></label>
+    <label class="field" style="margin-top:10px"><span>${L('На основе', 'Based on')}</span><select id="npc">${profileOptions(def, p => p.id === def ? L('  (основной)', '  (main)') : '')}<option value="">${L('Заводские настройки', 'Factory settings')}</option></select></label>
+    <p class="muted small">${L('Копируется всё: кнопки, DPI, подсветка, производительность. Если игровой профиль отличается от основного только тем, что нужно, при переключении в мышь записывается меньше.',
+      'Everything is copied: buttons, DPI, lighting, performance. When a game profile differs from the main one only where needed, less is written to the mouse on a switch.')}</p>
+    <div class="foot"><button data-r="0">${L('Отмена', 'Cancel')}</button><button class="primary" data-r="1">${L('Создать', 'Create')}</button></div>`, box => {
+    const n = box.querySelector('#npn'); n.focus(); n.select();
+    const go = async () => {
+      const name = n.value.trim(), copyFrom = box.querySelector('#npc').value;
+      if (!name) { n.focus(); return; }
+      closeModal();
+      const r = await run(() => api('profile/create', { name, copyFrom, group: group || '' }),
+        copyFrom ? L('Профиль создан на основе ', 'Profile created from ') + Q(profileById(copyFrom).name) : L('Профиль создан (заводские настройки)', 'Profile created (factory settings)'));
+      if (r) await reload();
+    };
+    n.onkeydown = e => { if (e.key === 'Enter') go(); };
+    box.querySelector('[data-r="0"]').onclick = closeModal;
+    box.querySelector('[data-r="1"]').onclick = go;
+  });
+}
+
+async function profileFolderOp(op, g, after) {
+  if (op === 'new') { newProfileDialog(g); return; }
+  if (op === 'rename') {
+    const to = await promptBox(L('Переименовать папку', 'Rename folder'), g, L('Переименовать', 'Rename'));
+    if (!to || to === g) return;
+    const r = await run(() => api('profile/group', { op, name: g, to }));
+    if (r) { if (after) after(r.name); await reload(); }
+    return;
+  }
+  if (op === 'delete') {
+    const n = profiles().filter(p => sameGroup(p.group, g)).length;
+    if (n && !await confirmBox(L('Удалить папку', 'Delete folder'), L(`Удалить папку ${esc(Q(g))}? Профили из неё (${n}) не удаляются — они окажутся «Без папки».`,
+      `Delete the folder ${esc(Q(g))}? Its profiles (${n}) are not deleted — they move to “No folder”.`), L('Удалить папку', 'Delete folder'), true)) return;
+  }
+  if (await run(() => api('profile/group', { op, name: g }))) await reload();
+}
+
+async function newFolderPrompt() {
+  return await promptBox(L('Новая папка', 'New folder'), '', L('Создать', 'Create'));
+}
+
+function ruleFolderOp(op, g, after) {
+  const rd = () => { rulesDirty = true; renderView(); };
+  const gi = () => ruleGroupsDraft.findIndex(x => sameGroup(x, g));
+  if (op === 'new') { addRuleDialog(g); return; }
+  if (op === 'rename') {
+    promptBox(L('Переименовать папку', 'Rename folder'), g, L('Переименовать', 'Rename')).then(to => {
+      to = (to || '').trim().replace(/\s+/g, ' ');
+      if (!to || to === g) return;
+      const ex = ruleGroupsDraft.find(x => sameGroup(x, to) && !sameGroup(x, g));
+      if (ex) { ruleGroupsDraft.splice(gi(), 1); to = ex; } else ruleGroupsDraft[gi()] = to;
+      rulesDraft.forEach(r => { if (sameGroup(r.group, g)) r.group = to; });
+      if (after) after(to);
+      rd();
+    });
+    return;
+  }
+  if (op === 'delete') { ruleGroupsDraft.splice(gi(), 1); rulesDraft.forEach(r => { if (sameGroup(r.group, g)) r.group = ''; }); rd(); return; }
+  const i = gi(), j = op === 'up' ? i - 1 : i + 1;
+  if (j >= 0 && j < ruleGroupsDraft.length) { [ruleGroupsDraft[i], ruleGroupsDraft[j]] = [ruleGroupsDraft[j], ruleGroupsDraft[i]]; rd(); }
+}
+
+let addRuleDialog = () => {}; // set by viewProfiles (needs its addRule)
+
 function viewProfiles(v) {
   const s = st(), set = S.data.settings;
   const running = new Set((s.stack || []).map(x => x.exe));
-  let pl = '';
-  for (const p of profiles()) {
+  const pinN = (profileById(set.defaultProfile) || {}).pinned ? profileById(set.defaultProfile).pinned.filter((x, i) => x && i !== 11).length : 0;
+  const pItems = profiles().map(p => {
     const badges = [];
-    if (p.id === set.defaultProfile) badges.push('★ ' + L('основной', 'main'));
-    if (p.id === s.base) badges.push(L('выбран вручную', 'selected manually'));
+    if (p.id === set.defaultProfile) badges.push('★ ' + L('основной', 'main') + (pinN ? ` · 📌 ${L('зафиксировано', 'pinned')}: ${pinN}` : ''));
     if (p.id === s.current) badges.push(`<span style="color:var(--accent)">● ${L('в мыши', 'on the mouse')}</span>`);
     const nRules = (S.data.rules || []).filter(r => r.profileId === p.id).length;
     if (nRules) badges.push(L('правил: ', 'rules: ') + nRules);
-    pl += `<tr><td><b>${esc(p.name)}</b><div class="small muted">${badges.join(' · ')}</div></td>
-      <td style="text-align:right;white-space:nowrap">
-      <button class="small" data-act="use" data-id="${p.id}" ${p.id === s.base ? 'disabled' : ''}>${L('Выбрать', 'Select')}</button>
-      <button class="small" data-act="edit" data-id="${p.id}">${L('Настроить', 'Edit')}</button>
-      <button class="small" data-act="ren" data-id="${p.id}">${L('Переименовать', 'Rename')}</button>
-      <button class="small" data-act="dup" data-id="${p.id}">${L('Копия', 'Duplicate')}</button>
-      <button class="small" data-act="def" data-id="${p.id}" ${p.id === set.defaultProfile ? 'disabled' : ''}>${L('Основной', 'Make main')}</button>
-      <button class="small danger" data-act="del" data-id="${p.id}" ${p.id === set.defaultProfile ? 'disabled' : ''}>✕</button></td></tr>`;
-  }
-  const popt = id => profiles().map(p => `<option value="${p.id}" ${p.id === id ? 'selected' : ''}>${esc(p.name)}</option>`).join('');
-  let rl = '';
-  rulesDraft.forEach((r, i) => {
-    rl += `<tr class="${r.enabled ? '' : 'off'}"><td><input type="checkbox" data-en="${i}" ${r.enabled ? 'checked' : ''} title="${L('Правило включено', 'Rule enabled')}"></td>
-      <td><input type="text" data-exe="${i}" value="${esc(r.exe)}" placeholder="game.exe" style="width:100%"></td>
-      <td><select data-pr="${i}">${popt(r.profileId)}</select></td>
-      <td><label class="check"><input type="checkbox" data-osd="${i}" ${r.osd ? 'checked' : ''}>${L('показывать', 'show')}</label></td>
-      <td>${running.has(r.exe) ? `<span style="color:var(--accent)">● ${L('запущена', 'running')}</span>` : ''}</td>
-      <td><button class="small danger" data-rdel="${i}">✕</button></td></tr>`;
+    return {
+      id: p.id, group: p.group || '', text: p.name,
+      html: `<div class="frow prow ${p.id === s.base ? 'on' : ''}" data-fid="${p.id}" data-in="${esc(p.group || '')}"><span class="grip" title="${L('Перетащите в папку', 'Drag to a folder')}">⋮⋮</span>
+        <div class="pmain"><div class="row"><b class="pname" data-ren="${p.id}" title="${L('Двойной клик — переименовать', 'Double-click to rename')}">${esc(p.name)}</b>
+          <span class="picons">${SECTIONS().map(([k, t]) => `<button class="icon" data-sec="${k}" data-id="${p.id}" title="${t}">${secIcon(k)}</button>`).join('')}</span></div>
+          ${badges.length ? `<div class="small muted">${badges.join(' · ')}</div>` : ''}</div>
+        ${p.id === s.base ? `<span class="small" style="color:var(--accent)">✓ ${L('выбран', 'selected')}</span>` : `<button class="small" data-act="use" data-id="${p.id}">${L('Выбрать', 'Select')}</button>`}
+        <button class="small icon" data-menu="${p.id}" title="${L('Ещё', 'More')}">⋯</button></div>`,
+    };
   });
-  v.innerHTML = `<div class="card"><div class="row"><h2 style="margin:0">${L('Профили', 'Profiles')}</h2><span class="grow"></span><button class="primary" id="pnew">+ ${L('Новый профиль', 'New profile')}</button></div>
-    <table style="margin-top:10px">${pl}</table>
-    <p class="muted small">${L('Профили хранятся на компьютере, их число не ограничено. В мышь записывается только один — текущий, и только то, что в нём отличается. «Выбрать» — профиль, который действует, когда не запущена ни одна игра из списка ниже.',
-      'Profiles are stored on the computer, with no limit on their number. Only the current one is written to the mouse, and only what differs. “Select” sets the profile used when none of the games below is running.')}</p></div>
+  const locked = !set.autoSwitch && !isSoftMode();
+  v.innerHTML = `<div class="card"><div class="row"><h2 class="inl">${L('Профили', 'Profiles')}</h2><span class="grow"></span><button class="small" id="pfold">+ ${L('Папка', 'Folder')}</button><button class="primary" id="pnew">+ ${L('Новый профиль', 'New profile')}</button></div>
+    <div id="plist" style="margin-top:10px"></div>
+    <p class="muted small">${L('Профили хранятся на компьютере. В мышь записывается только текущий и только то, что в нём отличается. «Выбрать» — профиль, который действует, когда не запущена ни одна игра из списка ниже. Значки у имени открывают разделы профиля.',
+      'Profiles are stored on the computer. Only the current one is written to the mouse, and only what differs. “Select” sets the profile used when none of the games below is running. The icons next to a name open the profile’s sections.')}</p></div>
 
-    ${!set.autoSwitch && !isSoftMode() ? `<div class="card locked"><h2>🔒 ${L('Игры и программы', 'Games and programs')}</h2>
-      <p>${L('Переключение профилей по запуску игр выключено. Оно перезаписывает память мыши при каждом запуске и закрытии игры, поэтому включается отдельно — после предупреждения в настройках.',
-        'Switching profiles by game launch is turned off. It rewrites the mouse memory every time a game starts and exits, so it has to be enabled separately, after a warning in Settings.')}</p>
+    ${locked ? `<div class="card locked"><h2>🔒 ${L('Игры и программы', 'Games and programs')}</h2>
+      <p>${L('Переключение настроек в мыши по запуску игр выключено. Оно перезаписывает память мыши при каждом запуске и закрытии игры, поэтому включается отдельно — галочкой «Переключать настройки в мыши по запуску игр» в настройках, после предупреждения.',
+        'Switching the mouse settings by game launch is turned off. It rewrites the mouse memory every time a game starts and exits, so it is enabled separately — with “Switch the mouse settings when a game starts” in Settings, after a warning.')}</p>
       ${rulesDraft.length ? `<p class="muted small">${L(`Сохранённых правил: ${rulesDraft.length}. Они не действуют, пока переключение выключено.`, `Saved rules: ${rulesDraft.length}. They are inactive while switching is off.`)}</p>` : ''}
       <button class="primary" id="goAuto">${L('Открыть настройки', 'Open Settings')}</button></div>` : `
-    <div class="card"><div class="row"><h2 style="margin:0">${L('Игры и программы', 'Games and programs')}</h2><span class="grow"></span>
-      <button id="radd">+ ${L('Добавить из запущенных', 'Add from running')}</button><button id="raddm">+ ${L('Вручную', 'Manually')}</button></div>
-    ${isSoftMode() ? `<p class="small">${L('<b>Программные кнопки</b> берутся из профиля программы, окно которой сейчас активно, — сразу и без записи в мышь. Если для активного окна правила нет — из профиля в мыши.',
-      '<b>Software buttons</b> come from the profile of the program whose window is in front — instantly and without writing the mouse. If there is no rule for that window — from the profile on the mouse.')}</p>` : ''}
-    <p class="muted small">${!set.autoSwitch ? L('Настройки мыши (DPI, подсветка, аппаратные кнопки) по запуску игр не переключаются — это включается в настройках после предупреждения об износе.',
-      'Mouse settings (DPI, lighting, hardware buttons) are not switched by game launch — that is enabled in Settings after a wear warning.') + ' ' : L('Когда запускается exe из списка, мышь переключается на его профиль; когда он закрывается — возвращается к предыдущему. Пока программа работает, мышь не перезаписывается. Если запущено несколько — действует запущенная последней.',
-      'When an exe from the list starts, the mouse switches to its profile; when it exits, the previous profile returns. While the program runs, the mouse is not rewritten. If several are running, the last started one wins.')}
-    ${L('«Всплывающее окно» — показывать окно со сменой профиля для этой программы', '“Popup” shows the profile-change popup for this program')}${S.data.settings.osdProfile ? '' : L(' (сейчас окна выключены в настройках)', ' (popups are currently turned off in Settings)')}.</p>
-    <table><thead><tr><th style="width:30px"></th><th>${L('Файл программы', 'Program file')}</th><th>${L('Профиль', 'Profile')}</th><th>${L('Всплывающее окно', 'Popup')}</th><th></th><th></th></tr></thead><tbody>
-    ${rl || `<tr><td colspan="6" class="muted" style="padding:14px">${L('Правил пока нет.', 'No rules yet.')}</td></tr>`}</tbody></table>
-    <div class="row" style="margin-top:12px"><span class="grow"></span>${rulesDirty ? `<span style="color:var(--warn)">● ${L('не сохранено', 'not saved')}</span>` : ''}
-      <button id="rrev" ${rulesDirty ? '' : 'disabled'}>${L('Отменить', 'Revert')}</button><button class="primary" id="rsave" ${rulesDirty ? '' : 'disabled'}>${L('Сохранить правила', 'Save rules')}</button></div>
-    ${!st().synced ? `<p class="small" style="color:var(--warn)">${L('Правила начнут работать после первой полной записи профиля в мышь (кнопка в жёлтой полосе вверху).', 'Rules start working after the first full write of a profile to the mouse (button in the yellow bar at the top).')}</p>` : ''}</div>`}`;
+    <div class="card"><div class="row"><h2 class="inl">${L('Игры и программы', 'Games and programs')}</h2><span class="grow"></span>
+      <button class="small" id="rfold">+ ${L('Папка', 'Folder')}</button><button class="small" id="radd">+ ${L('Из запущенных', 'From running')}</button><button class="small" id="raddm">+ ${L('Вручную', 'Manually')}</button></div>
+    <p class="muted small">${isSoftMode() ? L('Программные кнопки берутся из профиля активного окна. ', 'Software buttons come from the profile of the active window. ') : ''}${set.autoSwitch ? L('Настройки в мыши переключаются при запуске exe и возвращаются при закрытии.', 'Mouse settings switch when the exe starts and revert when it exits.') : L('Настройки в мыши по запуску игр не переключаются.', 'Mouse settings are not switched by game launch.')}</p>
+    <details class="more" data-more="rules" ${store.get('more.rules', false) ? 'open' : ''}><summary>${L('Как это работает', 'How it works')}</summary>
+    <p class="muted small">${isSoftMode() ? L('<b>Программные кнопки</b> берутся из профиля программы, окно которой сейчас активно, — сразу и без записи в мышь. Если для активного окна правила нет — из профиля в мыши. ',
+      '<b>Software buttons</b> come from the profile of the program whose window is in front — instantly and without writing the mouse. If there is no rule for that window — from the profile on the mouse. ') : ''}${set.autoSwitch ? L('Когда запускается exe из списка, мышь переключается на его профиль; когда он закрывается — возвращается к предыдущему. Пока программа работает, мышь не перезаписывается. Если запущено несколько — действует запущенная последней.',
+      'When an exe from the list starts, the mouse switches to its profile; when it exits, the previous profile returns. While the program runs, the mouse is not rewritten. If several are running, the last started one wins.') : L('Настройки в мыши (DPI, подсветка, аппаратные кнопки) по запуску игр не переключаются — это включается в настройках («Кнопки и профили») после предупреждения об износе.',
+      'Mouse settings (DPI, lighting, hardware buttons) are not switched by game launch — that is enabled in Settings (Buttons and profiles) after a wear warning.')}
+      ${L(' «Окно» — показывать всплывающее окно со сменой профиля для этой программы', ' “Popup” shows the profile-change popup for this program')}${set.osdProfile ? '' : L(' (сейчас окна выключены в настройках)', ' (popups are currently turned off in Settings)')}.</p></details>
+    <div class="rhead small muted"><span></span><span></span><span>${L('Файл программы', 'Program file')}</span><span>${L('Профиль', 'Profile')}</span><span>${L('Окно', 'Popup')}</span><span></span><span></span></div>
+    <div id="rlist"></div>
+    <div class="row" style="margin-top:10px">${!st().synced ? `<span class="small" style="color:var(--warn)">${L('Правила начнут работать после первой полной записи профиля в мышь.', 'Rules start working after the first full write of a profile to the mouse.')}</span>` : ''}<span class="grow"></span>${rulesDirty ? `<span style="color:var(--warn)">● ${L('не сохранено', 'not saved')}</span>` : ''}
+      <button id="rrev" ${rulesDirty ? '' : 'disabled'}>${L('Отменить', 'Revert')}</button><button class="primary" id="rsave" ${rulesDirty ? '' : 'disabled'}>${L('Сохранить правила', 'Save rules')}</button></div></div>`}`;
+  v.querySelectorAll('details[data-more]').forEach(d => d.ontoggle = () => store.set('more.' + d.dataset.more, d.open));
 
-  v.querySelectorAll('[data-act]').forEach(el => el.onclick = () => profileAction(el.dataset.act, el.dataset.id));
+  // profiles
+  const forceP = g => profiles().some(p => sameGroup(p.group, g) && (p.id === s.base || p.id === s.current));
+  mountFolderList(v.querySelector('#plist'), {
+    key: 'p', groups: S.data.profileGroups || [], items: pItems, forceOpen: forceP, empty: '',
+    newTitle: L('Новый профиль в этой папке', 'New profile in this folder'),
+    onGroup: profileFolderOp,
+    onMove: async (id, g) => { if (await run(() => api('profile/move', { id, group: g }))) await reload(); },
+    wire: list => {
+      list.querySelectorAll('[data-act]').forEach(el => el.onclick = () => profileAction(el.dataset.act, el.dataset.id));
+      list.querySelectorAll('[data-sec]').forEach(el => el.onclick = () => profileAction('edit', el.dataset.id, el.dataset.sec));
+      list.querySelectorAll('[data-ren]').forEach(el => el.ondblclick = () => renameInline(el));
+      list.querySelectorAll('[data-menu]').forEach(el => el.onclick = () => profileMenu(el, el.dataset.menu));
+    },
+  });
+  v.querySelector('#pnew').onclick = () => newProfileDialog('');
+  v.querySelector('#pfold').onclick = async () => {
+    const name = await newFolderPrompt();
+    if (name && await run(() => api('profile/group', { op: 'add', name }))) await reload();
+  };
   const ga = v.querySelector('#goAuto');
   if (ga) ga.onclick = () => {
     tab = 'settings'; store.set('tab', tab); renderAll();
     const c = $('#autoCard'); c.scrollIntoView({ block: 'center' }); c.classList.add('flash'); setTimeout(() => c.classList.remove('flash'), 1600);
+    const sw = $('#autosw'); if (sw) sw.focus();
   };
-  v.querySelector('#pnew').onclick = async () => {
-    const name = await promptBox(L('Новый профиль', 'New profile'), L('Профиль ', 'Profile ') + (profiles().length + 1), L('Создать', 'Create'));
-    if (!name) return;
-    if (await run(() => api('profile/create', { name, copyFrom: '' }), L('Профиль создан (настройки по умолчанию)', 'Profile created (default settings)'))) await reload();
-  };
-  if (!set.autoSwitch && !isSoftMode()) return;
+  if (locked) return;
+
+  // rules
   const rd = () => { rulesDirty = true; };
-  v.querySelectorAll('[data-en]').forEach(el => el.onchange = () => { rulesDraft[+el.dataset.en].enabled = el.checked; rd(); renderView(); });
-  v.querySelectorAll('[data-exe]').forEach(el => el.onchange = () => { rulesDraft[+el.dataset.exe].exe = el.value.trim().toLowerCase(); rd(); renderView(); });
-  v.querySelectorAll('[data-pr]').forEach(el => el.onchange = () => { rulesDraft[+el.dataset.pr].profileId = el.value; rd(); renderView(); });
-  v.querySelectorAll('[data-osd]').forEach(el => el.onchange = () => { rulesDraft[+el.dataset.osd].osd = el.checked; rd(); renderView(); });
-  v.querySelectorAll('[data-rdel]').forEach(el => el.onclick = () => { rulesDraft.splice(+el.dataset.rdel, 1); rd(); renderView(); });
-  const addRule = exe => {
+  const rItems = rulesDraft.map((r, i) => ({
+    id: String(i), group: r.group || '', text: r.exe + ' ' + ((profileById(r.profileId) || {}).name || ''),
+    html: `<div class="frow rrow ${r.enabled ? '' : 'off'}" data-fid="${i}" data-in="${esc(r.group || '')}"><span class="grip" title="${L('Перетащите в папку', 'Drag to a folder')}">⋮⋮</span>
+      <input type="checkbox" data-en="${i}" ${r.enabled ? 'checked' : ''} title="${L('Правило включено', 'Rule enabled')}">
+      <input type="text" data-exe="${i}" value="${esc(r.exe)}" placeholder="game.exe">
+      <select data-pr="${i}">${profileOptions(r.profileId)}</select>
+      <input type="checkbox" class="rosd" data-osd="${i}" ${r.osd ? 'checked' : ''} title="${L('Показывать всплывающее окно', 'Show the popup')}">
+      <span class="small">${running.has(r.exe) ? `<span style="color:var(--accent)">● ${L('запущена', 'running')}</span>` : ''}</span>
+      <button class="small danger icon" data-rdel="${i}" title="${L('Удалить правило', 'Delete rule')}">✕</button></div>`,
+  }));
+  const forceR = g => rulesDraft.some(r => sameGroup(r.group, g) && running.has(r.exe));
+  const addRule = (exe, group) => {
     exe = exe.trim().toLowerCase();
     if (!exe) return;
     if (!exe.endsWith('.exe')) exe += '.exe';
     if (rulesDraft.some(r => r.exe === exe)) { toast(exe + L(' уже в списке', ' is already in the list'), true); return; }
-    rulesDraft.push({ exe, profileId: editId || S.data.settings.baseProfile, osd: true, enabled: true });
+    rulesDraft.push({ exe, profileId: editId || S.data.settings.baseProfile, osd: true, enabled: true, group: group || '' });
     rd(); renderView();
   };
-  v.querySelector('#raddm').onclick = async () => { const n = await promptBox(L('Имя файла программы', 'Program file name'), 'game.exe', L('Добавить', 'Add')); if (n) addRule(n); };
+  addRuleDialog = async g => { const n = await promptBox(L('Имя файла программы', 'Program file name'), 'game.exe', L('Добавить', 'Add')); if (n) addRule(n, g); };
+  mountFolderList(v.querySelector('#rlist'), {
+    key: 'r', groups: ruleGroupsDraft, items: rItems, forceOpen: forceR, empty: L('Правил пока нет.', 'No rules yet.'),
+    newTitle: L('Новое правило в этой папке', 'New rule in this folder'),
+    onGroup: ruleFolderOp,
+    onMove: (id, g) => { const r = rulesDraft[+id]; if (r && !sameGroup(r.group, g)) { r.group = g; rd(); renderView(); } },
+    wire: list => {
+      list.querySelectorAll('[data-en]').forEach(el => el.onchange = () => { rulesDraft[+el.dataset.en].enabled = el.checked; rd(); renderView(); });
+      list.querySelectorAll('[data-exe]').forEach(el => el.onchange = () => { rulesDraft[+el.dataset.exe].exe = el.value.trim().toLowerCase(); rd(); renderView(); });
+      list.querySelectorAll('[data-pr]').forEach(el => el.onchange = () => { rulesDraft[+el.dataset.pr].profileId = el.value; rd(); renderView(); });
+      list.querySelectorAll('[data-osd]').forEach(el => el.onchange = () => { rulesDraft[+el.dataset.osd].osd = el.checked; rd(); renderView(); });
+      list.querySelectorAll('[data-rdel]').forEach(el => el.onclick = () => { rulesDraft.splice(+el.dataset.rdel, 1); rd(); renderView(); });
+    },
+  });
+  v.querySelector('#rfold').onclick = async () => {
+    const name = ((await newFolderPrompt()) || '').trim().replace(/\s+/g, ' ');
+    if (!name) return;
+    if (ruleGroupsDraft.some(g => sameGroup(g, name))) { toast(L('Такая папка уже есть', 'A folder with this name already exists'), true); return; }
+    ruleGroupsDraft.push(name); rd(); renderView();
+  };
+  v.querySelector('#raddm').onclick = () => addRuleDialog('');
   v.querySelector('#radd').onclick = async () => {
     const list = await run(() => api('processes'));
     if (!list) return;
@@ -1153,17 +1432,59 @@ function viewProfiles(v) {
       draw('');
       const pf = box.querySelector('#pf'); pf.focus();
       pf.oninput = () => draw(pf.value.toLowerCase());
-      box.querySelector('#pl').onclick = e => { const d = e.target.closest('[data-n]'); if (d) { closeModal(); addRule(d.dataset.n); } };
+      box.querySelector('#pl').onclick = e => { const d = e.target.closest('[data-n]'); if (d) { closeModal(); addRule(d.dataset.n, ''); } };
       box.querySelector('#pc').onclick = closeModal;
     });
   };
-  v.querySelector('#rrev').onclick = () => { rulesDraft = clone(S.data.rules || []); rulesDirty = false; renderView(); };
+  v.querySelector('#rrev').onclick = () => { rulesDraft = clone(S.data.rules || []); ruleGroupsDraft = clone(S.data.ruleGroups || []); rulesDirty = false; renderView(); };
   v.querySelector('#rsave').onclick = async () => {
-    if (await run(() => api('rules', rulesDraft), L('Правила сохранены', 'Rules saved'))) { rulesDirty = false; await reload(); }
+    if (await run(() => api('rules', { rules: rulesDraft, groups: ruleGroupsDraft }), L('Правила сохранены', 'Rules saved'))) { rulesDirty = false; await reload(); }
   };
 }
 
-async function profileAction(act, id) {
+// renameInline: double-click on a profile name edits it in place.
+function renameInline(el) {
+  const p = profileById(el.dataset.ren);
+  if (!p) return;
+  const inp = document.createElement('input');
+  inp.type = 'text'; inp.value = p.name; inp.className = 'pren';
+  el.replaceWith(inp); inp.focus(); inp.select();
+  let done = false;
+  const finish = async ok => {
+    if (done) return; done = true;
+    const name = inp.value.trim();
+    if (!ok || !name || name === p.name) { renderView(); return; }
+    const c = clone(p); c.name = name;
+    if (await run(() => api('profile/save', c))) { if (editId === p.id && draft) draft.name = name; }
+    await reload();
+  };
+  inp.onkeydown = e => { if (e.key === 'Enter') finish(true); if (e.key === 'Escape') { e.stopPropagation(); finish(false); } };
+  inp.onblur = () => finish(true);
+}
+
+function profileMenu(anchor, id) {
+  const p = profileById(id), main = S.data.settings.defaultProfile;
+  popMenu(anchor, [
+    { label: L('Переименовать', 'Rename'), on: () => profileAction('ren', id) },
+    { label: L('Копия', 'Duplicate'), on: () => profileAction('dup', id) },
+    { label: L('Сделать основным', 'Make main'), disabled: id === main, on: () => profileAction('def', id) },
+    { label: L('В папку ▸', 'Move to folder ▸'), on: a => folderMenu(a, p) },
+    { sep: true },
+    { label: L('Удалить', 'Delete'), danger: true, disabled: id === main, on: () => profileAction('del', id) },
+  ]);
+}
+
+function folderMenu(anchor, p) {
+  const move = async g => { if (await run(() => api('profile/move', { id: p.id, group: g }))) await reload(); };
+  popMenu(anchor, [
+    ...(S.data.profileGroups || []).map(g => ({ label: (sameGroup(p.group, g) ? '✓ ' : '') + esc(g), on: () => move(g) })),
+    { label: (p.group ? '' : '✓ ') + L('Без папки', 'No folder'), on: () => move('') },
+    { sep: true },
+    { label: L('Новая папка…', 'New folder…'), on: async () => { const g = await newFolderPrompt(); if (g) move(g); } },
+  ]);
+}
+
+async function profileAction(act, id, sec) {
   const p = profileById(id);
   switch (act) {
     case 'use':
@@ -1172,7 +1493,7 @@ async function profileAction(act, id) {
     case 'edit':
       if (dirty && editId !== id && !await discardChanges()) return;
       if (editId !== id) { editId = id; draft = clone(p); dirty = false; }
-      tab = 'buttons'; store.set('tab', tab); renderAll(); return;
+      tab = PROFILE_TABS.includes(sec) ? sec : 'buttons'; store.set('tab', tab); renderAll(); return;
     case 'ren': {
       const name = await promptBox(L('Переименовать профиль', 'Rename profile'), p.name, L('Сохранить', 'Save'));
       if (!name) return;
@@ -1184,7 +1505,7 @@ async function profileAction(act, id) {
     case 'dup': {
       const name = await promptBox(L('Копия профиля', 'Duplicate profile'), p.name + L(' (копия)', ' (copy)'), L('Создать', 'Create'));
       if (!name) return;
-      await run(() => api('profile/create', { name, copyFrom: id }), L('Копия создана', 'Copy created'));
+      await run(() => api('profile/create', { name, copyFrom: id, group: p.group || '' }), L('Копия создана', 'Copy created'));
       break;
     }
     case 'def':
@@ -1338,82 +1659,88 @@ function viewSettings(v) {
   const chk = (path, t, d) => `<label class="check"><input type="checkbox" data-b="${path}" ${get(path) ? 'checked' : ''}><span>${t}${d ? `<small>${d}</small>` : ''}</span></label>`;
   const num = (path, t, min, max) => `<label class="field"><span>${t}</span><input type="number" data-n="${path}" min="${min}" max="${max}" value="${get(path)}"></label>`;
   const col = (path, t) => `<div class="field"><span>${t}</span>${swatch(`data-c="${path}"`, get(path))}</div>`;
+  // numIn: "label [n] unit" on one line
+  const numIn = (path, t, min, max, unit) => `<label class="inum">${t ? `<span>${t}</span>` : ''}<input type="number" data-n="${path}" min="${min}" max="${max}" value="${get(path)}">${unit ? `<span class="muted">${unit}</span>` : ''}</label>`;
   const POS = {
     'bottom-center': L('снизу по центру', 'bottom centre'), 'top-center': L('сверху по центру', 'top centre'), center: L('по центру', 'centre'),
     'top-left': L('слева сверху', 'top left'), 'top-right': L('справа сверху', 'top right'), 'bottom-left': L('слева снизу', 'bottom left'),
     'bottom-right': L('справа снизу', 'bottom right'), cursor: L('у курсора', 'at the cursor'),
   };
-  v.innerHTML = `<div class="grid2">
-  <div>
-  <div class="card"><h2>${L('Язык', 'Language')}</h2>
-    <select id="lang"><option value="ru" ${LANG === 'ru' ? 'selected' : ''}>Русский</option><option value="en" ${LANG === 'en' ? 'selected' : ''}>English</option></select>
-    <p class="muted small">${L('Язык окна, меню в трее, уведомлений и всплывающих окон.', 'Language of this window, the tray menu, notifications and popups.')}</p></div>
-  <div class="card"><h2>${L('О программе', 'About')}</h2>
-    <p>SM809 Control ${esc(S.version)} · ${L('открытый исходный код, лицензия MIT', 'open source, MIT licence')}</p>
-    <div class="row"><button data-url="releases">${L('Скачать новую версию', 'Download the latest version')}</button><button data-url="repo">${L('Проект на GitHub', 'Project on GitHub')}</button><button class="small" data-url="issues">${L('Сообщить о проблеме', 'Report a problem')}</button></div></div>
-  <div class="card"><h2>${L('Кнопки', 'Buttons')}</h2>
-    <div class="row"><span>${L('Режим', 'Mode')}: <b>${modeTitle(S.data.settings.buttonMode)}</b></span><span class="grow"></span><button id="modeBtn">${L('Изменить режим…', 'Change mode…')}</button></div>
+  const more = (id, html) => `<details class="more" data-more="${id}" ${store.get('more.' + id, false) ? 'open' : ''}><summary>${L('Подробнее', 'More')}</summary>${html}</details>`;
+  v.innerHTML = `<div class="scol">
+  <div class="card"><div class="row"><h2 class="inl">SM809 Control ${esc(S.version)}</h2><span class="muted small">${L('открытый исходный код, MIT', 'open source, MIT')}</span><span class="grow"></span>
+    <select id="lang" title="${L('Язык окна, меню в трее, уведомлений и всплывающих окон', 'Language of this window, the tray menu, notifications and popups')}"><option value="ru" ${LANG === 'ru' ? 'selected' : ''}>Русский</option><option value="en" ${LANG === 'en' ? 'selected' : ''}>English</option></select></div>
+    <div class="row"><button class="small" data-url="releases">${L('Скачать новую версию', 'Download the latest version')}</button><button class="small" data-url="repo">${L('Проект на GitHub', 'Project on GitHub')}</button><button class="small" data-url="issues">${L('Сообщить о проблеме', 'Report a problem')}</button></div></div>
+
+  <div class="card" id="autoCard"><h2>${L('Кнопки и профили', 'Buttons and profiles')}</h2>
+    <div class="row"><span>${L('Режим кнопок', 'Button mode')}: <b>${modeTitle(S.data.settings.buttonMode)}</b></span><span class="grow"></span><button class="small" id="modeBtn">${L('Изменить режим…', 'Change mode…')}</button></div>
     ${chk('keyRepeat', L('Автоповтор клавиши, пока программная кнопка зажата', 'Repeat the key while a software button is held'), L('для одной клавиши без модификаторов', 'single keys without modifiers'))}
-    ${chk('restoreOnExit', L('При выходе из программы возвращать аппаратную раскладку', 'Restore the hardware layout when the app exits'), L('программные кнопки будут работать и без программы (как в аппаратном режиме), но каждый выход и запуск — запись в мышь', 'software buttons then work without the app (as in hardware mode), but every exit and start writes the mouse'))}</div>
-  <div class="card" id="autoCard"><h2>${L('Переключение профилей по играм', 'Switching profiles by games')}</h2>
-    <label class="check"><input type="checkbox" id="autosw" ${S.data.settings.autoSwitch ? 'checked' : ''}><span>${L('Разрешить', 'Allow')}<small>${L('профиль включается при запуске exe и выключается при его закрытии (вкладка «Профили и игры»)', 'a profile is applied when an exe starts and reverted when it exits (Profiles & games tab)')}</small></span></label>
-    <p class="muted small">${L('Выключено по умолчанию: каждое переключение перезаписывает флеш-память мыши, у которой ограниченный ресурс.', 'Off by default: every switch rewrites the mouse flash memory, which has limited endurance.')}</p></div>
+    ${chk('restoreOnExit', L('При выходе из программы возвращать аппаратную раскладку', 'Restore the hardware layout when the app exits'), L('программные кнопки будут работать и без программы (как в аппаратном режиме), но каждый выход и запуск — запись в мышь', 'software buttons then work without the app (as in hardware mode), but every exit and start writes the mouse'))}
+    <label class="check"><input type="checkbox" id="autosw" ${S.data.settings.autoSwitch ? 'checked' : ''}><span>${L('Переключать настройки в мыши по запуску игр', 'Switch the mouse settings when a game starts')}<small>${L('DPI, подсветка, частота опроса и аппаратные кнопки из профиля игры записываются в мышь при её запуске и возвращаются при закрытии (правила — на вкладке «Профили и игры»). Каждое переключение — запись во флеш. Программные кнопки переключаются по активному окну всегда и без записи в мышь — эта галочка на них не влияет.',
+      'DPI, lighting, polling rate and hardware buttons of the game’s profile are written to the mouse when the game starts and reverted when it exits (rules are on the Profiles & games tab). Every switch writes the flash. Software buttons always follow the active window without writing the mouse — this box does not affect them.')}</small></span></label>
+    ${S.data.settings.autoSwitch ? `<div class="row sub">${numIn('scanSeconds', L('Проверять запущенные программы раз в', 'Check running programs every'), 1, 30, L('с', 's'))}</div>` : ''}</div>
+
+  <div class="card"><h2>${L('Батарея', 'Battery')}</h2>
+    <div class="row">${numIn('lowPercent', L('Предупреждать при', 'Warn at'), 0, 100, '%')}${numIn('criticalPercent', L('срочно при', 'critical at'), 0, 100, '%')}<span class="muted small">${L('0 — не предупреждать', '0 = no warning')}</span></div>
+    ${chk('notifyFull', L('Сообщать, когда мышь зарядилась', 'Notify when fully charged'))}
+    ${chk('notifyLink', L('Сообщать о потере и восстановлении связи', 'Notify when the connection is lost or restored'))}</div>
+
+  <div class="card"><h2>${L('Программа', 'Application')}</h2>
+    <label class="check"><input type="checkbox" id="auto" ${autostartDraft ? 'checked' : ''} ${!S.elevated && S.autostartMode === 'task' ? 'disabled' : ''}><span>${L('Запускать вместе с Windows', 'Start with Windows')}<small>${L('в трее, без окна', 'in the tray, without the window')}</small></span></label>
+    ${S.elevated ? `<p class="muted small">🛡 ${L('Программа запущена с правами администратора, поэтому автозапуск создаётся как задача «SM809Control» в Планировщике заданий: обычный автозапуск Windows такие программы пропускает.',
+      'The app runs as administrator, so autostart is created as the task "SM809Control" in Task Scheduler: the normal Windows autostart skips such programs.')}</p>`
+    : S.autostartMode === 'task' ? `<p class="muted small">🛡 ${L('Автозапуск настроен через Планировщик заданий с правами администратора. Изменить его можно, только запустив программу от имени администратора.',
+      'Autostart is set up as a Task Scheduler task with administrator rights. To change it, run the app as administrator.')}</p>` : ''}
+    ${chk('debug', L('Вести журнал', 'Write a log'), L('файл sm809control.log в %APPDATA%\\SM809Control', 'file sm809control.log in %APPDATA%\\SM809Control'))}</div>
+
   <div class="card"><h2>${L('Всплывающие окна', 'Popups')}</h2>
     ${chk('osdProfile', L('При смене профиля', 'On profile change'), L('для отдельных программ можно выключить во вкладке «Профили и игры»', 'can be turned off for individual programs on the Profiles & games tab'))}
     ${chk('osdDpi', L('При смене DPI', 'On DPI change'))}
     ${chk('popup.useDpiColors', L('Цвет окна DPI = цвет уровня', 'DPI popup uses the level colour'))}
-    <h3>${L('Внешний вид', 'Appearance')}</h3>
+    <div class="row"><button class="small" id="tDpi">${L('Показать окно DPI', 'Preview DPI popup')}</button><button class="small" id="tProf">${L('Показать окно профиля', 'Preview profile popup')}</button></div>
+    <details class="more" data-more="popup" ${store.get('more.popup', false) ? 'open' : ''}><summary>${L('Настроить внешний вид', 'Customise the look')}</summary>
     <div class="row"><label class="field"><span>${L('Положение', 'Position')}</span><select data-s="popup.position">${Object.entries(POS).map(([k, n]) => `<option value="${k}" ${ps.position === k ? 'selected' : ''}>${n}</option>`).join('')}</select></label>
       ${num('popup.offsetX', L('Отступ X', 'Offset X'), -2000, 2000)}${num('popup.offsetY', L('Отступ Y', 'Offset Y'), -2000, 2000)}</div>
     <div class="row">${num('popup.width', L('Ширина', 'Width'), 60, 2000)}${num('popup.height', L('Высота', 'Height'), 30, 2000)}${num('popup.cornerRadius', L('Скругление', 'Corner radius'), 0, 500)}</div>
-    <div class="row">${col('popup.background', L('Фон', 'Background'))}<label class="field"><span>${L('Непрозрачность', 'Opacity')}</span><input type="range" data-n="popup.opacity" min="0" max="255" value="${ps.opacity}" style="width:120px"></label>
+    <div class="row">${col('popup.background', L('Фон', 'Background'))}<label class="field"><span>${L('Непрозрачность', 'Opacity')}</span><input type="range" data-n="popup.opacity" min="0" max="255" value="${ps.opacity}" style="width:110px"></label>
       ${col('popup.textColor', L('Текст', 'Text'))}${col('popup.captionColor', L('Подпись', 'Caption'))}${col('popup.accentColor', L('Акцент', 'Accent'))}${col('popup.dotColor', L('Точки', 'Dots'))}</div>
-    <div class="row"><label class="field"><span>${L('Шрифт', 'Font')}</span><input type="text" data-s="popup.font" value="${esc(ps.font)}" style="width:150px"></label>
+    <div class="row"><label class="field"><span>${L('Шрифт', 'Font')}</span><input type="text" data-s="popup.font" value="${esc(ps.font)}" style="width:130px"></label>
       ${num('popup.fontSize', L('Размер', 'Size'), 6, 300)}${num('popup.captionSize', L('Подпись', 'Caption'), 6, 200)}${chk('popup.bold', L('Жирный', 'Bold'))}</div>
-    <div class="row">${num('popup.durationMs', L('Показывать, мс', 'Show for, ms'), 100, 60000)}${num('popup.fadeMs', L('Затухание, мс', 'Fade, ms'), 0, 10000)}</div>
-    <div class="row" style="margin-top:12px"><button id="tDpi">${L('Показать окно DPI', 'Preview DPI popup')}</button><button id="tProf">${L('Показать окно профиля', 'Preview profile popup')}</button><button class="small" id="pDef">${L('Стиль по умолчанию', 'Default style')}</button></div>
-  </div></div>
-  <div>
-  <div class="card"><h2>${L('Батарея', 'Battery')}</h2>
-    <div class="row">${num('lowPercent', L('Предупреждать при, %', 'Warn at, %'), 0, 100)}${num('criticalPercent', L('Срочно при, %', 'Critical at, %'), 0, 100)}</div>
-    ${chk('notifyFull', L('Сообщать, когда мышь зарядилась', 'Notify when fully charged'))}
-    ${chk('notifyLink', L('Сообщать о потере и восстановлении связи', 'Notify when the connection is lost or restored'))}
-    <p class="muted small">${L('0 — не предупреждать.', '0 = no warning.')}</p></div>
-  <div class="card"><h2>${L('Программа', 'Application')}</h2>
-    <label class="check"><input type="checkbox" id="auto" ${autostartDraft ? 'checked' : ''} ${!S.elevated && S.autostartMode === 'task' ? 'disabled' : ''}><span>${L('Запускать вместе с Windows', 'Start with Windows')}<small>${L('в трее, без окна', 'in the tray, without the window')}</small></span></label>
-    ${S.elevated ? `<p class="muted small">🛡 ${L('Программа запущена с правами администратора, поэтому автозапуск создаётся командой schtasks как задача «SM809Control» в Планировщике заданий (с наивысшими правами): обычный автозапуск Windows такие программы пропускает.',
-      'The app runs as administrator, so autostart is created with schtasks as the task "SM809Control" in Task Scheduler (highest privileges): the normal Windows autostart skips such programs.')}</p>`
-    : S.autostartMode === 'task' ? `<p class="muted small">🛡 ${L('Автозапуск настроен через Планировщик заданий с правами администратора. Изменить его можно, только запустив программу от имени администратора.',
-      'Autostart is set up as a Task Scheduler task with administrator rights. To change it, run the app as administrator.')}</p>` : ''}
-    ${num('scanSeconds', L('Проверять запущенные программы раз в, с', 'Check running programs every, s'), 1, 30)}
-    ${chk('debug', L('Вести журнал', 'Write a log'), L('файл sm809control.log в %APPDATA%\\SM809Control', 'file sm809control.log in %APPDATA%\\SM809Control'))}
-</div>
+    <div class="row">${num('popup.durationMs', L('Показывать, мс', 'Show for, ms'), 100, 60000)}${num('popup.fadeMs', L('Затухание, мс', 'Fade, ms'), 0, 10000)}<span class="grow"></span><button class="small" id="pDef">${L('Стиль по умолчанию', 'Default style')}</button></div>
+    </details></div>
+
   <div class="card"><h2>${L('Данные', 'Data')}</h2>
-    <div class="row"><button id="exp">${L('Экспорт профилей и макросов…', 'Export profiles and macros…')}</button><button id="imp">${L('Импорт…', 'Import…')}</button><input type="file" id="impf" accept=".json" hidden></div>
-    <p class="muted small">${L('Экспорт сохраняет JSON-файл. При импорте профили и макросы добавляются как новые, ничего не перезаписывается.', 'Export saves a JSON file. Import adds profiles and macros as new ones and overwrites nothing.')}</p>
-    <div class="sep"></div>
-    <div class="row"><button id="bkp">${L('Полная резервная копия…', 'Full backup…')}</button><button id="rst">${L('Восстановить из копии…', 'Restore from backup…')}</button><input type="file" id="rstf" accept=".json" hidden></div>
-    <p class="muted small">${L('Всё сразу — профили, макросы, правила игр, настройки, счётчик записей во флеш, что уже записано в мышь, история заряда. Для переноса программы на другой компьютер. Восстановление заменяет текущие данные; их копия сохраняется в %APPDATA%\\SM809Control.',
-      'Everything at once — profiles, macros, game rules, settings, flash write counter, what is already on the mouse, battery history. Use it to move the app to another PC. Restoring replaces the current data; a copy of it is kept in %APPDATA%\\SM809Control.')}</p></div>
+    <div class="row"><button class="small" id="exp">${L('Экспорт профилей и макросов…', 'Export profiles and macros…')}</button><button class="small" id="imp">${L('Импорт…', 'Import…')}</button><input type="file" id="impf" accept=".json" hidden></div>
+    <p class="muted small">${L('JSON-файл; при импорте всё добавляется как новое, ничего не перезаписывается.', 'A JSON file; import adds everything as new and overwrites nothing.')}</p>
+    <div class="row"><button class="small" id="bkp">${L('Полная резервная копия…', 'Full backup…')}</button><button class="small" id="rst">${L('Восстановить из копии…', 'Restore from backup…')}</button><input type="file" id="rstf" accept=".json" hidden></div>
+    <p class="muted small">${L('Всё сразу, для переноса на другой компьютер.', 'Everything at once, to move the app to another PC.')}</p>
+    ${more('backup', `<p class="muted small">${L('Профили, макросы, правила игр, настройки, счётчик записей во флеш, что уже записано в мышь, история заряда. Восстановление заменяет текущие данные; их копия сохраняется в %APPDATA%\\SM809Control.',
+      'Profiles, macros, game rules, settings, flash write counter, what is already on the mouse, battery history. Restoring replaces the current data; a copy of it is kept in %APPDATA%\\SM809Control.')}</p>`)}</div>
+
   <div class="card"><h2>${L('Мышь', 'Mouse')}</h2>
-    <div class="row"><button id="force">${L('Записать текущий профиль целиком', 'Write the current profile in full')}</button><button class="danger" id="reset">${L('Сброс к заводским…', 'Factory reset…')}</button></div>
-    <div class="row" style="margin-top:10px"><button class="primary" id="mread">${L('Прочитать настройки из мыши', 'Read settings from the mouse')}</button><button class="small" id="fdump">${L('Сохранить дамп памяти', 'Save memory dump')}</button><button class="small" id="diag">${L('Диагностика подключения…', 'Connection diagnostics…')}</button></div>
-    <p class="muted small">${L('Только чтение, ничего не записывает. Мышь должна быть подключена кабелем. Показывает, что реально хранится в мыши, и позволяет сделать из этого профиль.', 'Read-only, writes nothing. The mouse must be connected by cable. Shows what is actually stored in the mouse and lets you make a profile from it.')}</p>
-    <p class="muted small">${L('Обычно программа записывает только изменения. Полная запись нужна, если настройки в мыши поменяли другой программой.', 'Normally only changes are written. A full write is needed if the mouse settings were changed by another program.')}
-    ${L('Каждая запись перезаписывает ячейку флеш-памяти мыши; всего записей через эту программу', 'Each write rewrites a flash sector of the mouse; total writes from this app')}: <b>${st().flashWrites}</b> ${L('(ресурс флеша — десятки тысяч циклов).', '(flash endurance is tens of thousands of cycles).')}</p></div>
+    <p class="small">${L('Записей во флеш через программу', 'Flash writes from this app')}: <b>${st().flashWrites}</b> <span class="muted">${L('(ресурс — десятки тысяч циклов)', '(endurance is tens of thousands of cycles)')}</span></p>
+    <h3>${L('Запись', 'Writing')}</h3>
+    <div class="row"><button class="small" id="force">${L('Записать текущий профиль целиком', 'Write the current profile in full')}</button><button class="small danger" id="reset">${L('Сброс к заводским…', 'Factory reset…')}</button></div>
+    <p class="muted small">${L('Обычно записываются только изменения. Полная запись нужна, если настройки в мыши поменяли другой программой.', 'Normally only changes are written. A full write is needed if the mouse settings were changed by another program.')}</p>
+    <h3>${L('Чтение — по кабелю', 'Reading — over the cable')}</h3>
+    <div class="row"><button class="small primary" id="mread">${L('Прочитать настройки из мыши', 'Read settings from the mouse')}</button><button class="small" id="fdump">${L('Сохранить дамп памяти', 'Save memory dump')}</button></div>
+    <p class="muted small">${L('Только чтение, в мышь ничего не записывается. Показывает, что реально хранится в мыши, и позволяет сделать из этого профиль.', 'Read-only, nothing is written to the mouse. Shows what is actually stored in the mouse and lets you make a profile from it.')}</p>
+    <h3>${L('Диагностика', 'Diagnostics')}</h3>
+    <div class="row"><button class="small" id="diag">${L('Диагностика подключения…', 'Connection diagnostics…')}</button><span class="muted small">${L('что программа видит на каждом интерфейсе мыши — для отчёта о проблеме', 'what the app sees on each interface of the mouse — for a problem report')}</span></div></div>
+
   <div class="card"><h2>🧪 ${L('Экспериментальные опции', 'Experimental options')}</h2>
-    <p class="muted small">${L('Скрытые возможности прошивки, которых нет в фирменных программах. Найдены при разборе прошивки и на практике проверены не до конца — меняйте осознанно.', 'Hidden firmware features not offered by the vendor software. Found by reading the firmware and not fully field-tested — change them deliberately.')}</p>
+    <p class="muted small">${L('Скрытые возможности прошивки, которых нет в фирменных программах. Проверены не до конца — меняйте осознанно.', 'Hidden firmware features not offered by the vendor software. Not fully field-tested — change them deliberately.')}</p>
     <h3>${L('Антидребезг кнопок', 'Button debounce')}</h3>
-    ${chk('debounceSet', L('Задавать значение', 'Set the value'), L('скрытая настройка прошивки (команда 9), её нет в фирменных программах', 'a hidden firmware setting (command 9) not offered by the vendor software'))}
-    <div class="row">${num('debounce', L('Значение (заводское — 2)', 'Value (factory — 2)'), 0, 20)}<button class="small" id="dbFactory">${L('Заводское', 'Factory')}</button></div>
-    <p class="muted small">${L('Сколько тактов опроса кнопка должна оставаться в новом положении, прежде чем мышь примет нажатие. Больше — меньше ложных двойных кликов у изношенных кнопок, но клик срабатывает с небольшой задержкой. Меньше — быстрее, но возможен «дребезг». Увеличивайте понемногу (3, 4, 5…), если кнопка начала даблкликать. Отключение галочки ничего не возвращает — чтобы вернуть как было, поставьте 2. Записывается в мышь при сохранении настроек и не меняется при смене профилей.',
-      'How many button scan ticks the new state must hold before the mouse accepts it. Higher — fewer false double clicks on worn switches, but a slightly delayed click. Lower — faster, but bounces may get through. Increase step by step (3, 4, 5…) if a button starts double-clicking. Unticking does not restore anything — set 2 to go back. Written to the mouse when settings are saved; not changed by profile switches.')}</p>
+    <div class="row">${chk('debounceSet', L('Задавать значение', 'Set the value'))}${numIn('debounce', '', 0, 20, L('(заводское — 2)', '(factory — 2)'))}<button class="small" id="dbFactory">${L('Заводское', 'Factory')}</button></div>
+    <p class="muted small">${L('Больше — меньше ложных двойных кликов у изношенных кнопок, но клик чуть позже.', 'Higher means fewer false double clicks on worn switches, but a slightly later click.')}</p>
+    ${more('debounce', `<p class="muted small">${L('Скрытая настройка прошивки (команда 9). Сколько тактов опроса кнопка должна оставаться в новом положении, прежде чем мышь примет нажатие. Меньше — быстрее, но возможен «дребезг». Увеличивайте понемногу (3, 4, 5…), если кнопка начала даблкликать. Отключение галочки ничего не возвращает — чтобы вернуть как было, поставьте 2. Записывается в мышь при сохранении настроек и не меняется при смене профилей.',
+      'A hidden firmware setting (command 9). How many button scan ticks the new state must hold before the mouse accepts it. Lower is faster, but bounces may get through. Increase step by step (3, 4, 5…) if a button starts double-clicking. Unticking does not restore anything — set 2 to go back. Written to the mouse when settings are saved; not changed by profile switches.')}</p>`)}
     <h3>${L('Зоны подсветки', 'Lighting zones')}</h3>
-    ${chk('zonesFw', L('В мыши пропатченная прошивка с зонами', 'The mouse runs the patched zones firmware'), L('SM809_Mouse_IAP_zones; определяется автоматически при чтении настроек из мыши по кабелю', 'SM809_Mouse_IAP_zones; detected automatically when the settings are read from the mouse over the cable'))}
-    <p class="muted small">${L('Включает на вкладке «Подсветка» отдельное выключение боковых кнопок и колеса и постоянный цвет логотипа. С заводской прошивкой эти настройки ни на что не влияют. Цвет логотипа хранится в 8-м слоте цветов DPI — фирменный веб-драйвер его перезаписывает.',
-      'Adds separate on/off for the side buttons and the wheel and a fixed logo colour on the Lighting tab. With the stock firmware these settings do nothing. The logo colour is stored in DPI colour slot 8, which the vendor web driver overwrites.')}</p>
-</div>
-  </div></div>`;
+    ${chk('zonesFw', L('В мыши пропатченная прошивка с зонами', 'The mouse runs the patched zones firmware'), L('SM809_Mouse_IAP_zones; определяется при чтении настроек из мыши по кабелю', 'SM809_Mouse_IAP_zones; detected when the settings are read from the mouse over the cable'))}
+    ${more('zones', `<p class="muted small">${L('Включает на вкладке «Подсветка» отдельное выключение боковых кнопок и колеса и постоянный цвет логотипа. С заводской прошивкой эти настройки ни на что не влияют. Цвет логотипа хранится в 8-м слоте цветов DPI — фирменный веб-драйвер его перезаписывает.',
+      'Adds separate on/off for the side buttons and the wheel and a fixed logo colour on the Lighting tab. With the stock firmware these settings do nothing. The logo colour is stored in DPI colour slot 8, which the vendor web driver overwrites.')}</p>`)}</div>
+  </div>`;
+  v.querySelectorAll('details[data-more]').forEach(d => d.ontoggle = () => store.set('more.' + d.dataset.more, d.open));
 
   const mark = () => { if (!setDirty) { setDirty = true; renderEditbar(); } };
   const put = (path, val) => { const ks = path.split('.'); const last = ks.pop(); ks.reduce((o, k) => o[k], s)[last] = val; mark(); };
@@ -1443,7 +1770,7 @@ function viewSettings(v) {
     const d = await run(() => api('export'));
     if (!d) return;
     const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([JSON.stringify({ profiles: d.profiles, macros: d.macros, macroGroups: d.macroGroups || [] }, null, 2)], { type: 'application/json' }));
+    a.href = URL.createObjectURL(new Blob([JSON.stringify({ profiles: d.profiles, macros: d.macros, macroGroups: d.macroGroups || [], profileGroups: d.profileGroups || [] }, null, 2)], { type: 'application/json' }));
     a.download = 'sm809-profiles.json';
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 5000);
@@ -1454,7 +1781,7 @@ function viewSettings(v) {
     const file = f.files[0]; if (!file) return;
     let d;
     try { d = JSON.parse(await file.text()); } catch { toast(L('Это не JSON-файл', 'This is not a JSON file'), true); return; }
-    const r = await run(() => api('import', { profiles: d.profiles || [], macros: d.macros || [], macroGroups: d.macroGroups || [] }));
+    const r = await run(() => api('import', { profiles: d.profiles || [], macros: d.macros || [], macroGroups: d.macroGroups || [], profileGroups: d.profileGroups || [] }));
     if (r) { toast(L(`Импортировано профилей: ${r.profiles}, макросов: ${r.macros}`, `Imported profiles: ${r.profiles}, macros: ${r.macros}`)); await reload(); }
     f.value = '';
   };
@@ -1594,7 +1921,15 @@ function softLabel(b) {
   return L('не задано', 'not set');
 }
 // What button i of the draft does (label).
-const btnLabel = i => isSoftBtn(i) ? softLabel(draft.soft[i] || {}) : assignLabel(draft.buttons[i]);
+// pinned buttons: set in the main profile, they do the same in every profile
+const mainProfile = () => profileById(S.data.settings.defaultProfile);
+const isMainDraft = () => !!draft && draft.id === S.data.settings.defaultProfile;
+const pinnedFromMain = i => { const m = mainProfile(); return !isMainDraft() && i !== LOCKED_BUTTON && !!m && !!(m.pinned || [])[i]; };
+const pinnedHere = i => i !== LOCKED_BUTTON && (isMainDraft() ? !!(draft.pinned || [])[i] : pinnedFromMain(i));
+const btnLabel = i => {
+  const p = pinnedFromMain(i) ? mainProfile() : draft;
+  return isSoftBtn(i) ? softLabel(p.soft[i] || {}) : assignLabel(p.buttons[i]);
+};
 
 const MODE_INFO = () => ({
   hardware: {
@@ -1807,6 +2142,7 @@ function softKeysEditor(body, b, set) {
     mods = SOFT_MODS.filter(m => m === el.dataset.mod ? el.checked : mods.includes(m));
     apply();
   });
+  keyFilter(body.querySelector('#skey'));
   body.querySelector('#skey').onchange = e => { key = e.target.value; apply(); };
   const cap = body.querySelector('#scap');
   cap.onclick = async () => {

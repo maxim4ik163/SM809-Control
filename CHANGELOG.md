@@ -7,10 +7,24 @@ Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/re
 **English**
 
 - **Battery forecast counts only the time the mouse is connected.** It used calendar time, so nights and weekends with the PC off (the mouse sleeps and hardly drains) made the forecast jump several times up after every break. *Time left* is now hours of use, with calendar days at your usual routine next to it (average time connected per day over the last two weeks, after 3 days of history). *Drain* is shown in % per hour of use.
+- **Pinned buttons.** In the main profile any button (except the main left one) can be pinned: it then does the same in every profile. Other profiles keep their own value, which comes back when the pin is removed. A switch between profiles that differ only in pinned buttons does not rewrite the key layout.
+- **Folders for profiles and game rules**, like the macro folders: collapse, rename, reorder, drag a row by ⋮⋮. Profile lists in drop-downs and the tray menu are grouped by folder. Rule folders are saved with *Save rules*.
+- **Profiles & games tab, tidied up.** Each profile has icons that open its Buttons, DPI, Lighting and Performance; *Select* and a ⋯ menu (rename, duplicate, make main, move to folder, delete) replace the row of buttons; double-click a name to rename it. *New profile* asks what to base it on — the main profile by default, or factory settings.
+- **Lighting.** *All lighting On/Off* is now a separate switch at the top of the tab: the side-button mode (card renamed to *Side buttons lighting*, without *Off*) and the zones are kept and greyed out while it is off.
+- **Search in key lists** (key combination, software key, macro editor): type “f13” and press Enter.
+- **Settings, reorganised.** *Switch profiles by games* is now *Switch the mouse settings when a game starts* in the *Buttons and profiles* card, with a description of what it really does (software buttons follow the active window regardless). The *Mouse* card is split into Writing / Reading / Diagnostics. More compact layout: two balanced columns, language next to the version, the popup look and long explanations folded away.
+- Buttons in card headers are aligned to the right again (the spacer style only worked in the top bar).
 
 **Русский**
 
 - **Прогноз заряда учитывает только время, пока мышь на связи.** Раньше считалось календарное время, и ночи и выходные с выключенным ПК (мышь спит и почти не тратит заряд) после каждого перерыва завышали прогноз в разы. *Хватит примерно на* теперь показывает часы работы, а рядом — дни при вашем обычном режиме (среднее время на связи в сутки за последние две недели, после 3 дней истории). *Расход* — в % за час работы.
+- **Фиксация кнопок.** В основном профиле любую кнопку (кроме основной левой) можно зафиксировать: она будет делать одно и то же во всех профилях. Свои значения в других профилях сохраняются и возвращаются, если снять фиксацию. Если профили отличаются только зафиксированными кнопками, при переключении раскладка не перезаписывается.
+- **Папки для профилей и правил игр**, как у макросов: сворачивание, переименование, порядок, перетаскивание строки за ⋮⋮. В выпадающих списках профилей и в меню трея профили сгруппированы по папкам. Папки правил сохраняются кнопкой «Сохранить правила».
+- **Вкладка «Профили и игры» стала аккуратнее.** У профиля значки, открывающие его «Кнопки», «DPI», «Подсветку» и «Производительность»; вместо ряда кнопок — «Выбрать» и меню ⋯ (переименовать, копия, сделать основным, в папку, удалить); переименование — двойным кликом по имени. «Новый профиль» спрашивает, на основе какого создать — по умолчанию основного, или с заводскими настройками.
+- **Подсветка.** «Вся подсветка Вкл/Выкл» — отдельный переключатель вверху вкладки: режим боковых кнопок (карточка теперь «Подсветка боковых кнопок», без «Выкл») и зоны сохраняются и становятся неактивными, пока подсветка выключена.
+- **Поиск в списках клавиш** (сочетание, программная клавиша, редактор макроса): набрать «f13» и нажать Enter.
+- **Настройки упорядочены.** «Переключение профилей по играм» теперь «Переключать настройки в мыши по запуску игр» в карточке «Кнопки и профили», с описанием того, что она делает на самом деле (программные кнопки следуют за активным окном в любом случае). Карточка «Мышь» разделена на «Запись», «Чтение», «Диагностика». Вёрстка компактнее: две выровненные колонки, язык рядом с версией, внешний вид всплывающих окон и длинные пояснения свёрнуты.
+- Кнопки в заголовках карточек снова прижаты вправо (стиль распорки работал только в верхней панели).
 
 ## 2.3.0 — 2026-11-09
 

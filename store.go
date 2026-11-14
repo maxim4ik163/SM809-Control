@@ -25,8 +25,12 @@ type ButtonAssign struct {
 }
 
 type Profile struct {
-	ID      string           `json:"id"`
-	Name    string           `json:"name"`
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Group string `json:"group,omitempty"` // folder in the list, "" = none
+	// Pinned: only in the main profile — the button does the same in every
+	// profile (see Store.pinned).
+	Pinned  [16]bool         `json:"pinned"`
 	Buttons [16]ButtonAssign `json:"buttons"`
 
 	DPICount  int       `json:"dpiCount"`  // 1..6
@@ -43,7 +47,8 @@ type Profile struct {
 	MotionSync   bool `json:"motionSync"`
 	Ripple       bool `json:"ripple"`
 
-	Lighting int `json:"lighting"` // 0..10
+	Lighting int  `json:"lighting"` // side-button mode 1..10 (0 = off, only in old data)
+	LightOff bool `json:"lightOff"` // all lighting off (firmware mode 0); Lighting is kept
 
 	// Soft: actions of buttons 1..11 when they are software buttons
 	// (software mode); Kind "" = nothing.
@@ -61,6 +66,7 @@ type Rule struct {
 	ProfileID string `json:"profileId"`
 	OSD       bool   `json:"osd"`
 	Enabled   bool   `json:"enabled"`
+	Group     string `json:"group,omitempty"` // folder in the list, "" = none
 }
 
 type Settings struct {
@@ -140,9 +146,12 @@ type Data struct {
 	Macros   []*Macro   `json:"macros"`
 	// MacroGroups: macro folders in display order, including empty ones.
 	MacroGroups []string `json:"macroGroups"`
-	Rules    []Rule     `json:"rules"`
-	Settings Settings   `json:"settings"`
-	Soft     *SoftData  `json:"soft,omitempty"` // 1.5 betas, migrated into profiles
+	// ProfileGroups, RuleGroups: folders of the profile and rule lists.
+	ProfileGroups []string  `json:"profileGroups"`
+	RuleGroups    []string  `json:"ruleGroups"`
+	Rules         []Rule    `json:"rules"`
+	Settings      Settings  `json:"settings"`
+	Soft          *SoftData `json:"soft,omitempty"` // 1.5 betas, migrated into profiles
 }
 
 // dataVersion 2 (SM809 Control 2.0): button modes, Profile.Soft.
@@ -343,6 +352,7 @@ func (s *Store) fixup() {
 		if p.LogoColor == "" {
 			p.LogoColor = defaultLogoColor
 		}
+		fixLight(p)
 	}
 	for i := range d.Rules {
 		d.Rules[i].Exe = lower(strings.TrimSpace(d.Rules[i].Exe))
@@ -360,7 +370,7 @@ func (s *Store) fixup() {
 			d.Settings.HWButtons[i] = true
 		}
 	}
-	syncMacroGroups(d)
+	syncFolders(d)
 	d.Version = dataVersion
 	d.Settings.HWButtons[lockedSlot] = true
 	d.Soft = nil
@@ -445,6 +455,7 @@ func validateProfile(p *Profile, sensorType int) error {
 	if p.Lighting < 0 || p.Lighting >= len(lightingModes) {
 		return errors.New(T("неизвестный режим подсветки", "unknown lighting mode"))
 	}
+	fixLight(p)
 	if p.LogoColor == "" {
 		p.LogoColor = defaultLogoColor
 	}
@@ -469,6 +480,62 @@ func validateProfile(p *Profile, sensorType int) error {
 		return errors.New(T("хотя бы одна кнопка должна оставаться левым кликом", "at least one button must stay a left click"))
 	}
 	return nil
+}
+
+// pinned returns p with the buttons pinned in the main profile taken from it
+// (hardware assignment and software action). The other profile keeps its own
+// values, which come back when the pin is removed. Call with s.mu held.
+func (s *Store) pinned(p *Profile) *Profile {
+	m := s.profile(s.data.Settings.DefaultProfile)
+	if p == nil || m == nil || m.ID == p.ID {
+		return p
+	}
+	var c *Profile
+	for i, on := range m.Pinned {
+		if !on || i == lockedSlot {
+			continue
+		}
+		if c == nil {
+			x := *p
+			c = &x
+		}
+		c.Buttons[i] = m.Buttons[i]
+		if i < softSlots {
+			c.Soft[i] = m.Soft[i]
+		}
+	}
+	if c == nil {
+		return p
+	}
+	return c
+}
+
+// fixLight turns the old lighting mode 0 ("off") into LightOff, so that the
+// side-button mode survives switching the lighting off and on again.
+func fixLight(p *Profile) {
+	if p.Lighting == 0 {
+		p.LightOff, p.Lighting = true, 2
+	}
+}
+
+// setLightMode stores a mode reported by the mouse.
+func (p *Profile) setLightMode(m int) {
+	if m == 0 {
+		p.LightOff = true
+		if p.Lighting == 0 {
+			p.Lighting = 2
+		}
+		return
+	}
+	p.LightOff, p.Lighting = false, m
+}
+
+// lightMode: the mode written to the mouse.
+func (p *Profile) lightMode() int {
+	if p.LightOff {
+		return 0
+	}
+	return p.Lighting
 }
 
 func lower(s string) string { return strings.ToLower(s) }

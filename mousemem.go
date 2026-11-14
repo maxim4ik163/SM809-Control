@@ -239,8 +239,9 @@ func decodeMouse(mem *MouseMemory, sensorType int) (*Profile, []*Macro, error) {
 		p.SleepMin = 20
 	}
 	p.MoveWakeup, p.MoveLightOff = c[cfgWake] == 1, c[cfgLOff] == 1
-	p.Lighting = int(c[cfgLight])
-	if p.Lighting < 0 || p.Lighting >= len(lightingModes) {
+	if m := int(c[cfgLight]); m >= 0 && m < len(lightingModes) {
+		p.setLightMode(m)
+	} else {
 		p.Lighting = 2
 	}
 	mem.Debounce = int(c[cfgDebnc])

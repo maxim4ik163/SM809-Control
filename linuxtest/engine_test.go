@@ -627,3 +627,149 @@ func TestBatteryStartupGlitch(t *testing.T) {
 		t.Fatalf("jitter recorded: %+v", e.bat.Samples)
 	}
 }
+
+func TestLightOff(t *testing.T) {
+	st, e := setup(t)
+	def := st.data.Settings.DefaultProfile
+	// the mouse reports mode 0 ("off") on the first link → flag, side mode kept
+	e.handleReport(report(true, 2, 1, 0))
+	p := st.profile(def)
+	if !p.LightOff || p.Lighting == 0 {
+		t.Fatalf("seed off: %+v", p.Lighting)
+	}
+	// old data with mode 0 migrates
+	q := newProfile("old", 0x11)
+	q.Lighting = 0
+	if err := validateProfile(q, 0x11); err != nil || !q.LightOff || q.Lighting != 2 {
+		t.Fatalf("migrate: %v %v %d", err, q.LightOff, q.Lighting)
+	}
+	// the command carries mode 0 while off and the side mode when on again
+	p.Lighting = 7
+	e.Apply(def, true, "t", false, true)
+	light := func() byte {
+		for _, b := range takeSent() {
+			if b[0] == cmdLighting { // [cmd, seq, 1, sum, 255, mode, …]
+				return b[5]
+			}
+		}
+		return 255
+	}
+	if m := light(); m != 0 {
+		t.Fatalf("off sends %d", m)
+	}
+	p.LightOff = false
+	e.Apply(def, false, "t", false, true)
+	if m := light(); m != 7 {
+		t.Fatalf("on sends %d", m)
+	}
+}
+
+func TestPinnedButtons(t *testing.T) {
+	st, e := setup(t)
+	def := st.data.Settings.DefaultProfile
+	e.handleReport(report(true, 2, 1, 9))
+	p := st.profile(def)
+	e.Apply(def, true, "t", false, true)
+	takeSent()
+	// game profile that differs from the main one only in button 1
+	g := *p
+	g.ID, g.Name = "g", "Game"
+	g.Buttons[0] = ButtonAssign{Kind: "key", Code: [3]int{112, 0, 0x68}} // F13
+	st.data.Profiles = append(st.data.Profiles, &g)
+	if d := e.diff(&g); len(d) != 1 || d[0] != "keys" {
+		t.Fatalf("diff before pin %v", d)
+	}
+	// pinned in the main profile: switching to the game writes nothing
+	p.Pinned[0] = true
+	if d := e.diff(&g); len(d) != 0 {
+		t.Fatalf("diff with pin %v", d)
+	}
+	e.Apply(g.ID, false, "t", false, true)
+	if s := takeSent(); len(s) != 0 {
+		t.Fatalf("switch wrote %s", cmds(s))
+	}
+	// the game keeps its own value; a pin on the game profile does nothing
+	if g.Buttons[0].Code[2] != 0x68 {
+		t.Fatal("own value lost")
+	}
+	g.Pinned[1] = true
+	if q := st.pinned(p); q != p {
+		t.Fatal("main profile changed by another profile's pin")
+	}
+	// the left button cannot be pinned
+	p.Pinned[lockedSlot] = true
+	g.Buttons[lockedSlot] = ButtonAssign{Kind: "key", Code: [3]int{16, 1, 0}}
+	if st.pinned(&g).Buttons[lockedSlot] != g.Buttons[lockedSlot] {
+		t.Fatal("locked slot pinned")
+	}
+	// soft action follows the pin as well
+	p.Soft[0] = SoftBinding{Kind: SoftKeys, Keys: "Ctrl+Z"}
+	g.Soft[0] = SoftBinding{Kind: SoftKeys, Keys: "F13"}
+	if st.pinned(&g).Soft[0].Keys != "Ctrl+Z" || g.Soft[0].Keys != "F13" {
+		t.Fatal("soft pin")
+	}
+}
+
+func TestFolders(t *testing.T) {
+	st, _ := setup(t)
+	d := st.data
+	a := newProfile("A", 0x11)
+	b := newProfile("B", 0x11)
+	d.Profiles = append(d.Profiles, a, b)
+	if err := moveProfileTo(d, a.ID, " Games  shooters "); err != nil || a.Group != "Games shooters" || len(d.ProfileGroups) != 1 {
+		t.Fatalf("move %v %q %v", err, a.Group, d.ProfileGroups)
+	}
+	f := profileFolders(d)
+	if _, err := f.op("add", "games SHOOTERS", ""); err == nil {
+		t.Fatal("duplicate folder")
+	}
+	if _, err := f.op("add", "Work", ""); err != nil {
+		t.Fatal(err)
+	}
+	b.Group = "work"
+	f.sync()
+	if b.Group != "Work" {
+		t.Fatalf("spelling %q", b.Group)
+	}
+	if _, err := f.op("up", "Work", ""); err != nil || d.ProfileGroups[0] != "Work" {
+		t.Fatalf("up %v", d.ProfileGroups)
+	}
+	if n, err := f.op("rename", "Work", "Games shooters"); err != nil || n != "Games shooters" || b.Group != "Games shooters" || len(d.ProfileGroups) != 1 {
+		t.Fatalf("merge %v %v", err, d.ProfileGroups)
+	}
+	if _, err := f.op("delete", "Games shooters", ""); err != nil || a.Group != "" || b.Group != "" {
+		t.Fatal("delete keeps profiles without a folder")
+	}
+	// rules: folders saved with the list; unknown folders are added
+	d.Rules = []Rule{{Exe: "x.exe", Group: "Old"}, {Exe: "y.exe"}}
+	d.RuleGroups = []string{"Empty"}
+	syncFolders(d)
+	if len(d.RuleGroups) != 2 || d.RuleGroups[1] != "Old" {
+		t.Fatalf("rule folders %v", d.RuleGroups)
+	}
+}
+
+func TestRulesAPIGroups(t *testing.T) {
+	st, e := setup(t)
+	a, _ := newAPI(e, st, func(f func()) { f() })
+	def := st.data.Settings.DefaultProfile
+	if c, _ := post(t, a, "rules", []Rule{{Exe: "old.exe", ProfileID: def, Enabled: true}}); c != 200 {
+		t.Fatal("plain list")
+	}
+	body := map[string]any{"rules": []Rule{{Exe: "a.exe", ProfileID: def, Enabled: true, Group: "Games"}}, "groups": []string{"Games", "Empty"}}
+	if c, m := post(t, a, "rules", body); c != 200 {
+		t.Fatal(m)
+	}
+	if len(st.data.Rules) != 1 || st.data.Rules[0].Group != "Games" || len(st.data.RuleGroups) != 2 {
+		t.Fatalf("%+v %v", st.data.Rules, st.data.RuleGroups)
+	}
+	// saving a profile does not move it out of its folder
+	if c, _ := post(t, a, "profile/move", map[string]string{"id": def, "group": "Main"}); c != 200 {
+		t.Fatal("move")
+	}
+	p := *st.profile(def)
+	p.Group = ""
+	if c, m := post(t, a, "profile/save", p); c != 200 || st.profile(def).Group != "Main" {
+		t.Fatal(m, st.profile(def).Group)
+	}
+}

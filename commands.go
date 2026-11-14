@@ -86,7 +86,7 @@ func buildCommands(p *Profile, macroOf func(string) *Macro, sensor int, zones bo
 		{"sensor", 1, func(seq func() byte) [][]byte {
 			return [][]byte{EncodeSensor(p.AngleSnap, p.MotionSync, p.Ripple, seq)}
 		}},
-		{"light", 1, func(seq func() byte) [][]byte { return [][]byte{EncodeLighting(p.Lighting, seq)} }},
+		{"light", 1, func(seq func() byte) [][]byte { return [][]byte{EncodeLighting(p.lightMode(), seq)} }},
 	}
 	if zones {
 		v := zonesValue(p)
