@@ -505,3 +505,49 @@ func TestCarrierSlotOf(t *testing.T) {
 		seen[c.Code] = true
 	}
 }
+
+func TestSoftHold(t *testing.T) {
+	// validation keeps Hold only for keys and mouse buttons
+	b := SoftBinding{Kind: SoftMouse, Button: "left", Hold: true}
+	if err := validateSoftBinding(0, &b); err != nil || !b.Hold {
+		t.Fatalf("mouse hold: %v %+v", err, b)
+	}
+	b = SoftBinding{Kind: SoftDisable, Hold: true}
+	if err := validateSoftBinding(0, &b); err != nil || b.Hold {
+		t.Fatalf("disable hold must be cleared: %v %+v", err, b)
+	}
+
+	var p Profile
+	p.Soft[13] = SoftBinding{Kind: SoftMouse, Button: "left", Hold: true}
+	p.Soft[2] = SoftBinding{Kind: SoftKeys, Keys: "Ctrl+E", Hold: true}
+	o, ok := softOutput(&p, 13, nil)
+	if !ok || !o.Hold || o.Kind != SoftMouse {
+		t.Fatalf("output %+v", o)
+	}
+	if v := holdVKs(o); len(v) != 1 || v[0] != 0x01 {
+		t.Fatalf("left VKs %v", v)
+	}
+	o, ok = softOutput(&p, 2, nil)
+	if !ok || !o.Hold {
+		t.Fatalf("keys output %+v", o)
+	}
+	if v := holdVKs(o); len(v) != 2 || v[1] != 'E' {
+		t.Fatalf("Ctrl+E VKs %v", v)
+	}
+	if v := holdVKs(SoftOut{Kind: SoftMacro}); v != nil {
+		t.Fatalf("macro VKs %v", v)
+	}
+
+	// changed buttons: different action, or not a software button any more
+	old, cur := p.Soft, p.Soft
+	cur[13] = SoftBinding{Kind: SoftMouse, Button: "middle"}
+	all := uint32(1<<softSlots - 1)
+	ch := softChangedSlots(old, cur, all)
+	if !ch[13] || ch[2] || ch[0] {
+		t.Fatalf("changed %v", ch)
+	}
+	ch = softChangedSlots(old, old, all&^(1<<2))
+	if !ch[2] || ch[13] {
+		t.Fatalf("not carried %v", ch)
+	}
+}

@@ -36,6 +36,7 @@ var (
 	pVkKeyScanExW              = user32.NewProc("VkKeyScanExW")
 	pMapVirtualKeyExW          = user32.NewProc("MapVirtualKeyExW")
 	pGetKeyState               = user32.NewProc("GetKeyState")
+	pGetAsyncKeyState          = user32.NewProc("GetAsyncKeyState")
 	pGetOpenFileNameW          = comdlg32.NewProc("GetOpenFileNameW")
 )
 
@@ -344,7 +345,6 @@ func (r *softRuntime) runProgram(b SoftBinding) {
 		logf("запуск %q: ShellExecute %d", path, res)
 		return
 	}
-	logf("запущено: %s %s", path, b.Args)
 }
 
 // ---------------------------------------------------------------------------

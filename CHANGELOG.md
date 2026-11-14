@@ -2,6 +2,22 @@
 
 Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/releases).
 
+## 3.0.5 — 2026-11-15
+
+**English**
+
+- **Hold a key or mouse button with one press.** A software button with the *Key / combination* or *Mouse button* action has a new *Behaviour* choice: *while the button is held* (as before) or *press to hold, press again to release*. One press, one release, no repeats — for example, keep the left button down in a game without holding the side button. If you press and release the same key or button yourself in the meantime, the hold ends and the next press holds it again.
+- **A running macro no longer outlives a profile switch.** A macro in *repeat until pressed again* mode kept running after the buttons switched to another profile (a macro holding the left button kept clicking). Now, when a button gets another action — another profile in front, the profile edited, or the button made a hardware one — its hold is released and such a macro is stopped.
+- The macro editor explains that *repeat until pressed again* plays the macro in a loop: a macro with only "press left button" turns into many clicks. To hold a key or button, use the new *press to hold* behaviour.
+- The log records only macro starts, not every button press.
+
+**Русский**
+
+- **Удержание клавиши или кнопки мыши одним нажатием.** У программной кнопки с действием *Клавиша / сочетание* или *Кнопка мыши* появился выбор *Как работает*: *пока кнопка зажата* (как раньше) или *нажал — держится, нажал ещё раз — отпускается*. Одно нажатие, одно отпускание, без повторов — например, держать левую кнопку в игре, не держа боковую. Если за это время вы сами нажмёте и отпустите ту же клавишу или кнопку, удержание снимется, и следующее нажатие зажмёт её снова.
+- **Запущенный макрос больше не переживает смену профиля.** Макрос в режиме *повторять до повторного нажатия* продолжал работать после переключения кнопок на другой профиль (макрос с зажатием левой кнопки продолжал кликать). Теперь, когда у кнопки меняется действие — другой профиль активного окна, правка профиля или кнопка стала аппаратной, — удержание снимается, а такой макрос останавливается.
+- В редакторе макросов поясняется, что *повторять до повторного нажатия* проигрывает макрос по кругу: макрос из одного «нажать левую кнопку» превращается во множество кликов. Чтобы держать клавишу или кнопку, используйте новый режим *нажал — держится*.
+- В журнал пишутся только запуски макросов, а не каждое нажатие кнопки.
+
 ## 3.0.4 — 2026-11-14
 
 **English**

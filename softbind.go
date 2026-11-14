@@ -148,6 +148,10 @@ type SoftBinding struct {
 	Button  string `json:"button,omitempty"`  // left, right, middle, back, forward
 	MacroID string `json:"macroId,omitempty"` // SoftMacro
 
+	// SoftKeys, SoftMouse: press once to hold, press again to release
+	// (no repeat); otherwise held only while the button is held.
+	Hold bool `json:"hold,omitempty"`
+
 	// SoftText. A secret is kept only encrypted for the current Windows user
 	// (Enc, DPAPI) and never sent back as plain text; Text then carries a new
 	// value from the UI only.
@@ -178,6 +182,7 @@ type SoftOut struct {
 	Button string
 	Macro  *Macro      // SoftMacro (a copy)
 	B      SoftBinding // SoftText, SoftRun: the binding itself
+	Hold   bool        // SoftKeys, SoftMouse: press to hold, press again to release
 }
 
 var fwMouseButton = map[int]string{2: "right", 4: "middle", 8: "back", 16: "forward"}
@@ -343,9 +348,9 @@ func softOutput(p *Profile, i int, macroOf func(string) *Macro) (SoftOut, bool) 
 		if err != nil {
 			return SoftOut{}, false
 		}
-		return SoftOut{Kind: SoftKeys, Combo: c}, true
+		return SoftOut{Kind: SoftKeys, Combo: c, Hold: b.Hold}, true
 	case SoftMouse:
-		return SoftOut{Kind: SoftMouse, Button: b.Button}, true
+		return SoftOut{Kind: SoftMouse, Button: b.Button, Hold: b.Hold}, true
 	case SoftMacro:
 		if macroOf == nil {
 			return SoftOut{}, false
@@ -455,6 +460,9 @@ func validSoftMouseButton(s string) bool {
 func validateSoftBinding(i int, b *SoftBinding) error {
 	at := softSlotLabel(i)
 	b.Force = false
+	if b.Kind != SoftKeys && b.Kind != SoftMouse {
+		b.Hold = false
+	}
 	switch b.Kind {
 	case SoftNone, SoftDisable:
 	case SoftKeys:
@@ -648,4 +656,41 @@ func migrateBeta(d *Data, carrier [softSlots]bool, base *Profile) {
 		}
 	}
 	d.Settings.SoftBindings = false
+}
+
+// ---------------------------------------------------------------------------
+// Held actions ("press to hold, press again to release")
+
+// mouseVK: Windows virtual key of a mouse button (GetAsyncKeyState).
+var mouseVK = map[string]uint16{"left": 0x01, "right": 0x02, "middle": 0x04, "back": 0x05, "forward": 0x06}
+
+// holdVKs: the virtual keys that are down while o is held; nil if o is not
+// an action that can be held.
+func holdVKs(o SoftOut) []uint16 {
+	switch o.Kind {
+	case SoftMouse:
+		if vk, ok := mouseVK[o.Button]; ok {
+			return []uint16{vk}
+		}
+	case SoftKeys:
+		var v []uint16
+		for _, k := range o.Combo.Keys {
+			if k.VK != 0 {
+				v = append(v, k.VK)
+			}
+		}
+		return v
+	}
+	return nil
+}
+
+// softChangedSlots: buttons whose action differs between two sets of
+// bindings, or that are not carried (not software buttons) any more. A held
+// action or a running "until pressed again" macro of such a button is ended.
+func softChangedSlots(old, cur [softSlots]SoftBinding, carried uint32) [softSlots]bool {
+	var c [softSlots]bool
+	for i := range c {
+		c[i] = old[i] != cur[i] || carried&(1<<i) == 0
+	}
+	return c
 }

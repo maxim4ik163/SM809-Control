@@ -1095,6 +1095,8 @@ function renderMacroEditor(ed) {
     <div class="row">${[1, 3].map(t => `<label class="check"><input type="radio" name="ex" data-ex="${t}" ${m.executeType === t ? 'checked' : ''}>${exLabel[t]}</label>`).join('')}
       <span class="nowrap"><label class="check"><input type="radio" name="ex" data-ex="2" ${m.executeType === 2 ? 'checked' : ''}>${exLabel[2]}</label>
       <label class="check" ${m.executeType === 2 ? '' : 'style="opacity:.4"'}>N = <input type="number" id="mrep" min="1" max="255" value="${m.repeatCount || 1}" ${m.executeType === 2 ? '' : 'disabled'}></label></span></div>
+    ${m.executeType === 3 ? `<p class="muted small">${L('Макрос проигрывается по кругу. Чтобы просто держать клавишу или кнопку мыши, используйте у программной кнопки действие «Клавиша» или «Кнопка мыши» с режимом «нажал — держится, нажал ещё раз — отпускается».',
+      'The macro plays in a loop. To simply hold a key or mouse button, give a software button the “Key” or “Mouse button” action with “press to hold, press again to release”.')}</p>` : ''}
     <h3>${L('Действия', 'Actions')}</h3>
     <div class="evtable"><table><thead><tr><th>#</th><th>${L('Тип', 'Type')}</th><th>${L('Действие', 'Action')}</th><th>${L('Пауза перед', 'Delay before')}</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="muted" style="padding:16px">${L('Пусто. Запишите действия или добавьте их кнопками ниже.', 'Empty. Record actions or add them with the buttons below.')}</td></tr>`}</tbody></table></div>
     <div class="meter ${bytes > MAX_BYTES ? 'full' : ''}"><i style="width:${Math.min(100, bytes / MAX_BYTES * 100)}%"></i></div>
@@ -2031,8 +2033,8 @@ const niceKeys = k => (k || '').split('+').map(x => KEY_NICE()[x] || x).join('+'
 
 function softLabel(b) {
   switch (b.kind) {
-    case 'keys': return niceKeys(b.keys) || L('не задано', 'not set');
-    case 'mouse': return softMouseName(b.button);
+    case 'keys': return (niceKeys(b.keys) || L('не задано', 'not set')) + (b.hold && b.keys ? ' ⇅' : '');
+    case 'mouse': return softMouseName(b.button) + (b.hold ? ' ⇅' : '');
     case 'disable': return L('ничего', 'nothing');
     case 'macro': { const m = macroById(b.macroId); return L('Макрос: ', 'Macro: ') + (m ? m.name : L('(удалён)', '(deleted)')); }
     case 'text': return L('Текст: ', 'Text: ') + (b.secret ? '••••••' : (b.text || '').replace(/\s+/g, ' ').slice(0, 24) + ((b.text || '').length > 24 ? '…' : ''));
@@ -2166,6 +2168,7 @@ function softButtonEditor(body, i) {
     sb.innerHTML = `<div class="catalog">${SOFT_MOUSE().map(([k, n]) => `<button data-mb="${k}" class="${b.button === k ? 'cur' : ''}">${esc(n)}</button>`).join('')}</div>`;
     sb.querySelectorAll('[data-mb]').forEach(el => el.onclick = () => set({ ...b, button: el.dataset.mb }));
   }
+  if (b.kind === 'keys' || b.kind === 'mouse') softHoldSwitch(sb, b, set);
   if (b.kind === 'disable') sb.innerHTML = `<p class="muted small">${L('Кнопка ничего не делает.', 'The button does nothing.')}</p>`;
   if (!b.kind) sb.innerHTML = `<p class="muted small">${L('Действие не задано — кнопка ничего не делает.', 'No action — the button does nothing.')}</p>`;
   if (b.kind === 'macro') softMacroEditor(sb, b, set);
@@ -2246,6 +2249,18 @@ function softRunEditor(body, b, map, slot) {
   };
 }
 
+// "Behaviour": held while the button is held / press to hold, press again to release.
+function softHoldSwitch(body, b, set) {
+  const d = document.createElement('div');
+  d.innerHTML = `<div class="row"><span class="muted">${L('Как работает', 'Behaviour')}:</span>
+      <label class="check"><input type="radio" name="shold" value="" ${b.hold ? '' : 'checked'}>${L('пока кнопка зажата', 'while the button is held')}</label>
+      <label class="check"><input type="radio" name="shold" value="1" ${b.hold ? 'checked' : ''}>${L('нажал — держится, нажал ещё раз — отпускается', 'press to hold, press again to release')}</label></div>
+    ${b.hold ? `<p class="muted small">${L('Первое нажатие зажимает, второе отпускает — без повторов. Если за это время вы сами нажмёте и отпустите ту же клавишу или кнопку, удержание снимется, и следующее нажатие зажмёт её снова. При смене профиля с другим действием на этой кнопке удержание снимается.',
+      'The first press holds, the second releases — no repeats. If you press and release the same key or button yourself meanwhile, the hold ends and the next press holds it again. Switching to a profile with another action on this button releases it.')}</p>` : ''}`;
+  body.appendChild(d);
+  d.querySelectorAll('[name=shold]').forEach(r => r.onchange = () => set({ ...b, hold: !!r.value }));
+}
+
 const SOFT_MODS = ['Ctrl', 'Shift', 'Alt', 'Win'];
 function softKeysEditor(body, b, set) {
   const parts = (b.keys || '').split('+').filter(Boolean);
@@ -2256,8 +2271,8 @@ function softKeysEditor(body, b, set) {
     <div class="row"><select id="skey"><option value="">${L('— клавиша —', '— key —')}</option>${keyList.map(k => `<option ${k.name === key ? 'selected' : ''}>${esc(k.name)}</option>`).join('')}</select>
     <span class="muted">${L('или', 'or')}</span><span class="keycap" id="scap" tabindex="0">${L('записать с клавиатуры', 'record from the keyboard')}</span></div>
     <div class="row"><span class="muted">${L('Будет', 'Result')}: <b>${esc(b.keys || '—')}</b></span></div>
-    <p class="muted small">${L('Сочетание нажимается, пока зажата кнопка мыши. Запись с клавиатуры ловит и системные сочетания вроде Ctrl+Win+→; Esc — отмена.',
-      'The combination is held while the mouse button is held. Recording catches system combinations such as Ctrl+Win+→ too; Esc cancels.')}</p>`;
+    <p class="muted small">${L('Запись с клавиатуры ловит и системные сочетания вроде Ctrl+Win+→; Esc — отмена.',
+      'Recording catches system combinations such as Ctrl+Win+→ too; Esc cancels.')}</p>`;
   const apply = () => {
     const k = mods.concat(key ? [key] : []).join('+');
     set({ ...b, kind: 'keys', keys: k });

@@ -208,6 +208,12 @@ type softEvent struct {
 	down bool
 }
 
+// softHold: an action held by "press to hold, press again to release".
+type softHold struct {
+	out       SoftOut
+	unchecked bool // Windows did not report it down: never re-press, just release
+}
+
 type softHeld struct {
 	out SoftOut
 	rep *repeater
@@ -243,6 +249,9 @@ type softRuntime struct {
 	profileOSD bool   // it came from a rule with a popup
 	held       map[int]*softHeld
 	macros     map[int]*macroRun // macros started per button (still running or finished)
+	holds      map[int]*softHold // actions held until the button is pressed again
+	bind       [softSlots]SoftBinding
+	bindSet    bool // bind holds the bindings of the current profile
 	last       string
 	lastErr    string
 	errAt      time.Time
@@ -253,13 +262,14 @@ type softRuntime struct {
 func newSoftRuntime(st *Store, e *Engine, onOSD func(osdContent)) *softRuntime {
 	exe, _ := os.Executable()
 	r := &softRuntime{store: st, eng: e, onOSD: onOSD, events: make(chan softEvent, 64),
-		capBlocked: map[uint32]bool{}, held: map[int]*softHeld{}, macros: map[int]*macroRun{}, ownExe: normalizeExe(filepath.Base(exe))}
+		capBlocked: map[uint32]bool{}, held: map[int]*softHeld{}, macros: map[int]*macroRun{}, holds: map[int]*softHold{}, ownExe: normalizeExe(filepath.Base(exe))}
 	st.mu.Lock()
 	r.mask.Store(maskBits(st.state.Carrier))
 	st.mu.Unlock()
 	onCarrierChange = func(m [softSlots]bool) {
 		r.mask.Store(maskBits(m))
 		r.post(msgSoftUpdate)
+		go r.changed() // a button that is not a software button any more lets go
 	}
 	return r
 }
@@ -475,6 +485,18 @@ func (r *softRuntime) handle(ev softEvent) {
 	if r.held[ev.slot] != nil {
 		return
 	}
+	// "press to hold": the second press releases (or holds again if a real
+	// press and release of the same key or button already let go of it)
+	if hd := r.holds[ev.slot]; hd != nil {
+		r.held[ev.slot] = &softHeld{out: SoftOut{Kind: SoftDisable}}
+		if !hd.unchecked && !vksDown(holdVKs(hd.out)) {
+			holdPress(hd.out)
+			return
+		}
+		holdRelease(hd.out)
+		delete(r.holds, ev.slot)
+		return
+	}
 	// "repeat until pressed again": the second press only stops the macro
 	if r.stopRepeat(ev.slot) {
 		r.held[ev.slot] = &softHeld{out: SoftOut{Kind: SoftDisable}}
@@ -497,7 +519,14 @@ func (r *softRuntime) handle(ev softEvent) {
 	st.mu.Unlock()
 	r.last = softSlotName(ev.slot)
 	if !ok {
-		logf("кнопка %d: действие не задано", ev.slot+1)
+		return
+	}
+	if out.Hold && (out.Kind == SoftKeys || out.Kind == SoftMouse) {
+		hd := &softHold{out: out}
+		r.holds[ev.slot] = hd
+		r.held[ev.slot] = &softHeld{out: SoftOut{Kind: SoftDisable}}
+		holdPress(out)
+		go r.checkHold(ev.slot, hd)
 		return
 	}
 	h := &softHeld{out: out}
@@ -524,20 +553,70 @@ func (r *softRuntime) handle(ev softEvent) {
 		go r.runProgram(out.B)
 	}
 	r.held[ev.slot] = h
-	if logEnabled {
-		what := out.Kind
-		switch out.Kind {
-		case SoftKeys:
-			what = out.Combo.String()
-		case SoftMouse:
-			what = "mouse " + out.Button
-		case SoftMacro:
-			what = "macro " + out.Macro.Name
-		case SoftRun:
-			what = "run " + out.B.Path
-		}
-		logf("кнопка %d → %s (%s)", ev.slot+1, what, r.fgExe)
+	if out.Kind == SoftMacro { // only macro starts are logged, not every press
+		logf("кнопка %d → macro %s (%s)", ev.slot+1, out.Macro.Name, r.fgExe)
 	}
+}
+
+func holdPress(o SoftOut) {
+	if o.Kind == SoftMouse {
+		sendMouseButton(o.Button, false)
+	} else {
+		pressCombo(o.Combo)
+	}
+}
+
+func holdRelease(o SoftOut) {
+	if o.Kind == SoftMouse {
+		sendMouseButton(o.Button, true)
+	} else {
+		releaseCombo(o.Combo)
+	}
+}
+
+// vksDown: all keys are down for Windows (real and injected input alike).
+func vksDown(vks []uint16) bool {
+	if len(vks) == 0 {
+		return false
+	}
+	for _, vk := range vks {
+		if s, _, _ := pGetAsyncKeyState.Call(uintptr(vk)); s&0x8000 == 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// checkHold: shortly after a hold started, make sure Windows reports the key
+// or button down. If it does not (e.g. a program running as administrator is
+// in front), the second press always releases instead of pressing again.
+func (r *softRuntime) checkHold(slot int, hd *softHold) {
+	time.Sleep(80 * time.Millisecond)
+	down := vksDown(holdVKs(hd.out))
+	r.mu.Lock()
+	if !down && r.holds[slot] == hd {
+		hd.unchecked = true
+	}
+	r.mu.Unlock()
+}
+
+// endChanged ends held actions and "until pressed again" macros of buttons
+// whose action changed (profile switch, edit, button no longer software).
+// r.mu held.
+func (r *softRuntime) endChanged(ch [softSlots]bool) (ended bool) {
+	for slot, hd := range r.holds {
+		if slot >= 0 && slot < softSlots && ch[slot] {
+			holdRelease(hd.out)
+			delete(r.holds, slot)
+			ended = true
+		}
+	}
+	for slot, run := range r.macros {
+		if slot >= 0 && slot < softSlots && ch[slot] && run.mode == 3 && run.running() {
+			run.halt() // keys and buttons it left down are released by playMacro
+		}
+	}
+	return ended
 }
 
 // stopRepeat stops the "repeat until pressed again" macro of slot; true if
@@ -563,6 +642,10 @@ func (r *softRuntime) releaseAll() {
 	defer r.mu.Unlock()
 	for _, run := range r.macros {
 		run.halt()
+	}
+	for slot, hd := range r.holds {
+		holdRelease(hd.out)
+		delete(r.holds, slot)
 	}
 	for slot, h := range r.held {
 		if h.rep != nil {
@@ -650,11 +733,20 @@ func (r *softRuntime) changed() {
 		id, show = onMouse, false
 	}
 	name := ""
+	var bind [softSlots]SoftBinding
 	if p := st.profile(id); p != nil {
 		name = p.Name
+		bind = st.pinned(p).Soft
 	}
 	enabled, osdOn, style := softMode(st.data.Settings), st.data.Settings.OSDProfile, st.data.Settings.Popup
 	st.mu.Unlock()
+	r.mu.Lock()
+	ended := r.bindSet && r.endChanged(softChangedSlots(r.bind, bind, r.mask.Load()))
+	r.bind, r.bindSet = bind, true
+	r.mu.Unlock()
+	if ended {
+		r.wake()
+	}
 	if id == prevID {
 		return
 	}
@@ -686,6 +778,11 @@ func (r *softRuntime) status() SoftStatus {
 	}
 	for slot := range r.held {
 		s.Held = append(s.Held, softSlotName(slot))
+	}
+	for slot := range r.holds { // held until pressed again: lit while it lasts
+		if r.held[slot] == nil {
+			s.Held = append(s.Held, softSlotName(slot))
+		}
 	}
 	return s
 }
