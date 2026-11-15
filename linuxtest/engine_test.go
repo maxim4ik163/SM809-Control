@@ -791,3 +791,53 @@ func TestErrorLog(t *testing.T) {
 		t.Fatal("last error time")
 	}
 }
+
+// One notion of "the profile on the mouse": two profiles that differ only in
+// software actions; selecting the other one writes nothing, and after a
+// restart the software buttons still follow the selected profile.
+func TestOnMouseIsSelected(t *testing.T) {
+	st, e := setup(t)
+	def := st.data.Settings.DefaultProfile
+	e.handleReport(report(true, 2, 1, 9))
+	p := st.profile(def)
+	g := *p
+	g.ID, g.Name = "repo", "REPO"
+	g.Soft[13] = SoftBinding{Kind: SoftMouse, Button: "left", Hold: true}
+	st.data.Profiles = append(st.data.Profiles, &g)
+	st.data.Settings.BaseProfile = g.ID
+	e.Apply(g.ID, true, "t", false, true)
+	takeSent()
+	if st.state.LastProfile != g.ID || e.OnMouse() != g.ID {
+		t.Fatalf("after write: last %q on %q", st.state.LastProfile, e.OnMouse())
+	}
+	// select the main profile: same hardware → nothing written
+	st.data.Settings.BaseProfile = def
+	if e.OnMouse() != def {
+		t.Fatalf("selected but OnMouse %q", e.OnMouse())
+	}
+	e.Apply(def, false, "t", false, true)
+	if s := takeSent(); len(s) != 0 {
+		t.Fatalf("wrote %s", cmds(s))
+	}
+	if st.state.LastProfile != def {
+		t.Fatalf("lastProfile %q after a no-change apply", st.state.LastProfile)
+	}
+	// "restart": nothing applied yet, state on disk says REPO was written last
+	st.state.LastProfile = g.ID
+	e.mu.Lock()
+	e.active = ""
+	e.mu.Unlock()
+	if e.OnMouse() != def {
+		t.Fatalf("after restart OnMouse %q, want the selected %q", e.OnMouse(), def)
+	}
+	// hardware switching by games: the game profile on top is on the mouse
+	e.mu.Lock()
+	e.stack = []stackEntry{{Exe: "repo.exe", ProfileID: g.ID}}
+	e.mu.Unlock()
+	if e.OnMouse() != g.ID {
+		t.Fatalf("with a game on top OnMouse %q", e.OnMouse())
+	}
+	e.mu.Lock()
+	e.stack = nil
+	e.mu.Unlock()
+}

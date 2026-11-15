@@ -15,7 +15,7 @@ import (
 	"unsafe"
 )
 
-const appVersion = "3.0.5-debug2"
+const appVersion = "3.0.5-debug3"
 
 const projectURL = "https://github.com/maxim4ik163/SM809-Control"
 
@@ -104,11 +104,8 @@ func tooltipText() string {
 		}
 	}
 	parts = append(parts, modeName(p.Mode))
+	id := eng.OnMouse()
 	store.mu.Lock()
-	id := s.Active
-	if id == "" {
-		id = s.Base
-	}
 	if pr := store.profile(id); pr != nil {
 		parts = append(parts, pr.Name)
 	}
@@ -199,6 +196,7 @@ func showMenu() {
 	// profiles submenu
 	sub, _, _ := pCreatePopupMenu.Call()
 	snap := eng.Snapshot()
+	onMouse := eng.OnMouse()
 	store.mu.Lock()
 	var ids []string
 	item := func(menu uintptr, i int, p *Profile) {
@@ -207,7 +205,7 @@ func showMenu() {
 			fl |= MF_CHECKED
 		}
 		name := p.Name
-		if p.ID == snap.Active && p.ID != snap.Base {
+		if p.ID == onMouse && p.ID != snap.Base {
 			name += T("  (активен по правилу)", "  (active by rule)")
 		}
 		add(menu, fl, cmdProfile0+i, name)
@@ -267,11 +265,7 @@ func showMenu() {
 			api.notify()
 		}()
 	case c == cmdApplyAll:
-		id := snap.Active
-		if id == "" {
-			id = snap.Base
-		}
-		go eng.Apply(id, true, "из меню", true, false)
+		go eng.Apply(eng.OnMouse(), true, "из меню", true, false)
 	case c == cmdExit:
 		pDestroyWindow.Call(hwndMain)
 	case c >= cmdProfile0 && c < cmdProfile0+len(ids):

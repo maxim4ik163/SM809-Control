@@ -11,6 +11,7 @@ Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/re
 - **A running macro no longer outlives a profile switch.** A macro in *repeat until pressed again* mode kept running after the buttons switched to another profile (a macro holding the left button kept clicking). Now, when a button gets another action — another profile in front, the profile edited, or the button made a hardware one — its hold is released and such a macro is stopped.
 - The macro editor explains that *repeat until pressed again* plays the macro in a loop: a macro with only "press left button" turns into many clicks. To hold a key or button, use the new *press to hold* behaviour.
 - The log records only macro starts, not every button press.
+- **One "profile on the mouse".** Software buttons without a rule for the program in front now always follow the profile marked "on the mouse" (the selected one, or a game's profile with hardware switching by games). Before, after a restart they could follow the profile that was physically written last: if two profiles differed only in software actions, selecting the other one wrote nothing to the mouse and the buttons kept the old profile. If the selected profile still has to be written, the profile list says "on the mouse · waiting to be written".
 
 **Русский**
 
@@ -19,6 +20,8 @@ Earlier versions: see [Releases](https://github.com/maxim4ik163/SM809-Control/re
 - **Запущенный макрос больше не переживает смену профиля.** Макрос в режиме *повторять до повторного нажатия* продолжал работать после переключения кнопок на другой профиль (макрос с зажатием левой кнопки продолжал кликать). Теперь, когда у кнопки меняется действие — другой профиль активного окна, правка профиля или кнопка стала аппаратной, — удержание снимается, а такой макрос останавливается.
 - В редакторе макросов поясняется, что *повторять до повторного нажатия* проигрывает макрос по кругу: макрос из одного «нажать левую кнопку» превращается во множество кликов. Чтобы держать клавишу или кнопку, используйте новый режим *нажал — держится*.
 - В журнал пишутся только запуски макросов, а не каждое нажатие кнопки.
+- **Один «профиль в мыши».** Программные кнопки без правила для активного окна теперь всегда работают по профилю с меткой «в мыши» (выбранному или профилю игры при аппаратном переключении по играм). Раньше после перезапуска они могли работать по профилю, который последним физически записывался: если два профиля отличаются только программными действиями, выбор другого ничего не писал в мышь и кнопки оставались от старого. Если выбранный профиль ещё нужно записать, в списке профилей написано «в мыши · ждёт записи».
+
 
 ## 3.0.4 — 2026-11-14
 

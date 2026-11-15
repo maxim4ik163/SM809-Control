@@ -325,7 +325,9 @@ function profilePicker(anchor) {
   };
   const item = p => {
     const tags = [];
-    if (p.id === s.current) tags.push(`<span class="ok">● ${L('в мыши', 'on the mouse')}</span>`);
+    if (p.id === s.current) tags.push(s.synced && (s.pendingChanges || []).length
+      ? `<span class="warn">● ${L('в мыши · ждёт записи', 'on the mouse · waiting to be written')}</span>`
+      : `<span class="ok">● ${L('в мыши', 'on the mouse')}</span>`);
     if (isSoftMode() && p.id === softStat().profile && p.id !== s.current) tags.push(`<span class="ok">● ${L('кнопки сейчас', 'buttons now')}</span>`);
     if (p.id === main) tags.push('★ ' + L('основной', 'main'));
     return { label: `<span class="pmn">${esc(p.name)}</span>${tags.length ? `<span class="pmt">${tags.join(' · ')}</span>` : ''}`, cur: p.id === editId, on: () => go(p.id) };

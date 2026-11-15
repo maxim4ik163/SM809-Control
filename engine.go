@@ -184,10 +184,7 @@ func (e *Engine) handleReport(r statusReport) {
 		}
 	}
 	settings := st.data.Settings
-	activeP := st.profile(e.active)
-	if activeP == nil {
-		activeP = st.profile(settings.BaseProfile)
-	}
+	activeP := st.profile(e.topProfileLocked(settings.BaseProfile))
 	var dpiPopup *osdContent
 	if settings.OSDDPI && prev.HasState && prev.Link && ns.Link && prev.Level != ns.Level && activeP != nil {
 		dpiPopup = e.dpiOSD(activeP, ns.Level, settings.Popup)
@@ -440,21 +437,20 @@ func (e *Engine) ApplyKeys(profileID, reason string, wait bool) error {
 	return nil
 }
 
-// OnMouse returns the profile that is (as far as we know) on the mouse.
+// OnMouse returns the profile that is on the mouse: the selected (base)
+// profile, or the profile of a running game when hardware switching by games
+// put one on top. It is the one notion of "the profile on the mouse" for the UI
+// mark, the tray, the software buttons, imports and key-layout writes — even
+// while its write is still pending (the UI marks that as "waiting to be
+// written"). What was physically written last is e.active / state.LastProfile;
+// it no longer decides anything.
 func (e *Engine) OnMouse() string {
+	e.store.mu.Lock()
+	base := e.store.data.Settings.BaseProfile
+	e.store.mu.Unlock()
 	e.mu.Lock()
-	a := e.active
-	e.mu.Unlock()
-	if a != "" {
-		return a
-	}
-	st := e.store
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	if st.state.LastProfile != "" && st.profile(st.state.LastProfile) != nil {
-		return st.state.LastProfile
-	}
-	return st.data.Settings.BaseProfile
+	defer e.mu.Unlock()
+	return e.topProfileLocked(base)
 }
 
 // FactoryReset sends the reset command through the worker (keeps seq ordered).
@@ -547,6 +543,14 @@ func (e *Engine) run(j *applyJob) error {
 	}
 
 	if len(todo) == 0 {
+		// the mouse already holds this profile: remember it like a write
+		st.mu.Lock()
+		if st.state.LastProfile != pc.ID {
+			st.state.LastProfile = pc.ID
+			st.state.LastApplied = time.Now()
+			_ = st.saveState()
+		}
+		st.mu.Unlock()
 		e.mu.Lock()
 		e.active = pc.ID
 		e.lastMsg = fmt.Sprintf(T("«%s»: изменений нет, мышь не трогали", "“%s”: nothing changed, the mouse was not written"), pc.Name)

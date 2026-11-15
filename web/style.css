@@ -379,4 +379,5 @@ button.small.icon { line-height: 1; padding: 2px 7px; }
 .popmenu .pmn { display: block; }
 .popmenu .pmt { display: block; font-size: 12px; color: var(--muted); }
 .popmenu .pmt .ok { color: var(--accent); }
+.popmenu .pmt .warn { color: var(--warn); }
 .row.sub0 { margin-top: 6px; }
